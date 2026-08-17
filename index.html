@@ -1345,138 +1345,176 @@
             if (window.__mehfil_presence_init) return;
             window.__mehfil_presence_init = true;
 
-            let pingTimer = null;
-            let reconnectTimer = null;
-            let shouldReconnect = true;
+            // Create a singleton manager to avoid races across reloads and DevTools quirks
+            if (!window.__mehfil_presence_manager) {
+                window.__mehfil_presence_manager = {
+                    ws: null,
+                    connecting: false,
+                    shouldReconnect: true,
+                    reconnectTimer: null,
+                    pingTimer: null,
+                    backoffMs: 2000,
+                    pendingWahs: 0
+                };
+            }
+            const mgr = window.__mehfil_presence_manager;
 
             function getWsEndpoint() {
-                if (window.MEHFIL_WS_URL) return window.MEHFIL_WS_URL;
+                // Prefer Vite inlined env, then window fallback, then same-host dev fallback
+                // Note: import.meta.env is only available at build time; prefer window.MEHFIL_WS_URL which is set by ws-bridge
+                try {
+                    const inlined = (import.meta && import.meta.env && import.meta.env.VITE_MEHFIL_WS_URL) ? import.meta.env.VITE_MEHFIL_WS_URL : undefined;
+                    if (inlined && inlined.length) return inlined;
+                } catch (e) {}
+                if (window.MEHFIL_WS_URL && window.MEHFIL_WS_URL.length) return window.MEHFIL_WS_URL;
+
                 const host = window.location.hostname || 'localhost';
                 const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 return `${proto}//${host}:3001`;
             }
 
             function connect() {
-                if (!shouldReconnect) return;
-                if (presenceWs && (presenceWs.readyState === WebSocket.OPEN || presenceWs.readyState === WebSocket.CONNECTING)) {
-                    return;
-                }
+                if (!mgr.shouldReconnect) return;
+                if (mgr.ws && (mgr.ws.readyState === WebSocket.OPEN || mgr.ws.readyState === WebSocket.CONNECTING)) return;
+                if (mgr.connecting) return;
+                mgr.connecting = true;
+
+                const wsUrl = getWsEndpoint();
+                console.info('[MEHFIL WS] Initializing');
+                console.info('[MEHFIL WS] URL:', wsUrl);
+                console.info('[MEHFIL WS] Connecting');
 
                 try {
-                    const wsUrlToUse = getWsEndpoint();
-                    console.log('[WS] URL:', wsUrlToUse);
-                    console.log('[WS] Connecting to', wsUrlToUse);
-                    presenceWs = new WebSocket(wsUrlToUse);
+                    const ws = new WebSocket(wsUrl);
+                    mgr.ws = ws;
 
-                    presenceWs.addEventListener('open', () => {
-                        console.log('[WS] CONNECTED');
-                        window.__presence_socket_open = true;
-                        if (pingTimer) clearInterval(pingTimer);
-                        pingTimer = setInterval(() => {
-                            if (presenceWs && presenceWs.readyState === WebSocket.OPEN) {
-                                try { presenceWs.send(JSON.stringify({ type: 'PING' })); } catch(e) {}
-                            }
+                    ws.addEventListener('open', () => {
+                        console.info('[MEHFIL WS] Connected');
+                        mgr.connecting = false;
+                        mgr.backoffMs = 2000;
+
+                        if (mgr.pingTimer) clearInterval(mgr.pingTimer);
+                        mgr.pingTimer = setInterval(() => {
+                            try { if (mgr.ws && mgr.ws.readyState === WebSocket.OPEN) mgr.ws.send(JSON.stringify({ type: 'PING' })); } catch(e) {}
                         }, 4000);
+
+                        // Send any queued wahs (do not update UI here - server is authoritative)
+                        if (mgr.pendingWahs > 0) {
+                            const q = mgr.pendingWahs;
+                            mgr.pendingWahs = 0;
+                            for (let i = 0; i < q; i++) {
+                                try { mgr.ws.send(JSON.stringify({ type: 'INCREMENT_WAH' })); console.info('[MEHFIL WS] Wah sent (queued)'); } catch(e) { console.warn('[MEHFIL WS] queued wah send failed', e); }
+                            }
+                        }
                     });
 
-                    presenceWs.addEventListener('message', (evt) => {
+                    ws.addEventListener('message', (evt) => {
                         try {
                             const msg = JSON.parse(evt.data);
-                            console.log('[WS] MESSAGE', msg.type || 'unknown', msg);
+                            console.info('[MEHFIL WS] Message received:', msg.type, msg);
                             if (msg.type === 'INIT_STATE') {
-                                console.log('[WS] INIT_STATE', msg.presenceCount, msg.wahCount);
-                                if (onlineCountEl && typeof msg.presenceCount === 'number') {
-                                    onlineCountEl.textContent = `${msg.presenceCount} Online`;
-                                }
-                                if (typeof msg.wahCount === 'number') {
-                                    updateWahUI(msg.wahCount, false);
-                                }
+                                if (onlineCountEl && typeof msg.presenceCount === 'number') onlineCountEl.textContent = `${msg.presenceCount} Online`;
+                                if (typeof msg.wahCount === 'number') updateWahUI(msg.wahCount, false);
                             } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
-                                console.log('[WS] ONLINE RECEIVED', msg.count);
-                                if (onlineCountEl) {
-                                    onlineCountEl.textContent = `${msg.count} Online`;
-                                }
+                                if (onlineCountEl) onlineCountEl.textContent = `${msg.count} Online`;
                             } else if (msg.type === 'WAH_COUNT' && typeof msg.count === 'number') {
-                                console.log('[WS] WAH RECEIVED', msg.count);
-                                // Server broadcasted newly updated atomic global count
                                 updateWahUI(msg.count, true);
                             }
-                        } catch(err) { console.warn('[WS] message parse error', err); }
+                        } catch (e) { console.warn('[MEHFIL WS] Message parse error', e); }
                     });
 
-                    presenceWs.addEventListener('close', () => {
-                        console.log('[WS] Close');
-                        window.__presence_socket_open = false;
-                        if (pingTimer) clearInterval(pingTimer);
-                        if (reconnectTimer) clearTimeout(reconnectTimer);
-                        if (shouldReconnect) reconnectTimer = setTimeout(connect, 2000);
+                    ws.addEventListener('close', () => {
+                        console.info('[MEHFIL WS] Connection closed');
+                        mgr.connecting = false;
+                        if (mgr.pingTimer) { clearInterval(mgr.pingTimer); mgr.pingTimer = null; }
+                        if (mgr.ws) { try { mgr.ws.close(); } catch(e) {} }
+                        mgr.ws = null;
+
+                        if (mgr.shouldReconnect) {
+                            console.info('[MEHFIL WS] Reconnecting in', mgr.backoffMs, 'ms');
+                            if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
+                            mgr.reconnectTimer = setTimeout(() => { mgr.backoffMs = Math.min(30000, mgr.backoffMs * 2); connect(); }, mgr.backoffMs);
+                        }
                     });
 
-                    presenceWs.addEventListener('error', (e) => {
-                        console.warn('[WS] Error', e);
-                        try { presenceWs.close(); } catch(e) {}
+                    ws.addEventListener('error', (err) => {
+                        console.warn('[MEHFIL WS] Error', err && err.message);
+                        try { if (mgr.ws) mgr.ws.close(); } catch(e) {}
                     });
-                } catch(err) {
-                    console.warn('[WS] Connect exception', err);
-                    if (reconnectTimer) clearTimeout(reconnectTimer);
-                    if (shouldReconnect) reconnectTimer = setTimeout(connect, 2000);
+
+                } catch (e) {
+                    console.warn('[MEHFIL WS] Connect exception', e && e.message);
+                    mgr.connecting = false;
+                    if (mgr.shouldReconnect) {
+                        if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
+                        mgr.reconnectTimer = setTimeout(connect, mgr.backoffMs);
+                        mgr.backoffMs = Math.min(30000, mgr.backoffMs * 2);
+                    }
                 }
             }
 
-            // Resolve WS URL before first connect: try Vercel-provided env, otherwise probe Render health endpoint as a production fallback.
-            async function resolveWsUrl() {
-                if (window.MEHFIL_WS_URL && window.MEHFIL_WS_URL.length) {
-                    console.log('[WS] Using existing window.MEHFIL_WS_URL', window.MEHFIL_WS_URL);
-                    return;
+            function sendWah() {
+                if (mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
+                    try { mgr.ws.send(JSON.stringify({ type: 'INCREMENT_WAH' })); console.info('[MEHFIL WS] Wah sent'); } catch(e) { console.warn('[MEHFIL WS] Wah send failed', e); }
+                } else {
+                    mgr.pendingWahs = (mgr.pendingWahs || 0) + 1;
+                    console.info('[MEHFIL WS] Wah queued (socket not open)');
+                    connect();
                 }
+            }
 
-                // Try known Render health endpoint - if it responds, use it as the WSS host.
-                const probeHost = 'https://mehfil-e-ghazal.onrender.com/';
-                try {
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 1500);
-                    const res = await fetch(probeHost, { signal: controller.signal });
-                    clearTimeout(timeout);
-                    if (res && res.ok) {
-                        try {
+            // Replace the existing handleWahClick implementation to use sendWah safely
+            const _origHandleWah = handleWahClick;
+            window.__mehfil_presence_orig_handleWah = _origHandleWah;
+            handleWahClick = function(e) {
+                if (e) { e.stopPropagation(); e.preventDefault(); }
+                const now = Date.now();
+                if (now - lastWahClickTimestamp < 150) return;
+                lastWahClickTimestamp = now;
+                sendWah();
+                if (typeof isWeb3Configured !== 'undefined' && isWeb3Configured && typeof window.ethereum !== 'undefined') {
+                    triggerWeb3Wah();
+                }
+            };
+
+            try {
+                if (wahBtn) { wahBtn.removeEventListener('click', window.__mehfil_presence_orig_handleWah); wahBtn.removeEventListener('click', handleWahClick); wahBtn.addEventListener('click', handleWahClick); }
+                if (wahBtnMobile) { wahBtnMobile.removeEventListener('click', window.__mehfil_presence_orig_handleWah); wahBtnMobile.removeEventListener('click', handleWahClick); wahBtnMobile.addEventListener('click', handleWahClick); }
+            } catch (e) { console.warn('[MEHFIL WS] attach wah handlers failed', e); }
+
+            (async () => {
+                // If window.MEHFIL_WS_URL is not set (build env missing), probe Render health endpoint to derive it at runtime
+                if (!window.MEHFIL_WS_URL || !window.MEHFIL_WS_URL.length) {
+                    try {
+                        const controller = new AbortController();
+                        const timeout = setTimeout(() => controller.abort(), 1500);
+                        const res = await fetch('https://mehfil-e-ghazal.onrender.com/', { signal: controller.signal });
+                        clearTimeout(timeout);
+                        if (res && res.ok) {
                             const json = await res.json();
                             if (json && json.status === 'ok') {
                                 window.MEHFIL_WS_URL = 'wss://mehfil-e-ghazal.onrender.com';
-                                console.log('[WS] Probed Render health OK, setting window.MEHFIL_WS_URL to', window.MEHFIL_WS_URL);
-                                return;
+                                console.info('[MEHFIL WS] Resolved Render host at runtime', window.MEHFIL_WS_URL);
                             }
-                        } catch (e) {
-                            console.warn('[WS] Probe JSON parse failed', e);
                         }
-                    }
-                } catch (e) {
-                    // probe failed or timed out - ignore and fall back to default behavior
-                    // console.debug('[WS] Probe failed', e && e.message);
+                    } catch (e) { /* probe failed - fall back to getWsEndpoint() */ }
+                } else {
+                    console.info('[MEHFIL WS] Using window.MEHFIL_WS_URL preconfigured:', window.MEHFIL_WS_URL);
                 }
-            }
 
-            (async () => {
-                await resolveWsUrl();
+                // Start connection
                 connect();
 
-                document.addEventListener('visibilitychange', () => {
-                    if (document.visibilityState === 'visible') {
-                        connect();
-                    }
-                });
-
+                document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') connect(); });
                 window.addEventListener('online', connect);
-            })();
 
-            // Close socket cleanly on page unload to avoid stale connections
-            window.addEventListener('beforeunload', () => {
-                shouldReconnect = false;
-                try {
-                    if (presenceWs && presenceWs.readyState === WebSocket.OPEN) {
-                        presenceWs.close();
-                    }
-                } catch (e) {}
-            });
+                window.addEventListener('beforeunload', () => {
+                    mgr.shouldReconnect = false;
+                    if (mgr.pingTimer) clearInterval(mgr.pingTimer);
+                    if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
+                    try { if (mgr.ws) mgr.ws.close(); } catch (e) {}
+                });
+            })();
         }
 
         // Ensure Wah click handler is attached exactly once

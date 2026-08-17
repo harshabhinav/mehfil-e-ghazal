@@ -204,6 +204,19 @@
             document.getElementById('bg-layer-overlay').src = initialSrc;
         })();
     </script>
+    <script type="module">
+      // Expose Vite-provided WebSocket URL to legacy inline scripts without making UI changes.
+      // Use VITE_MEHFIL_WS_URL in production (set in Vercel). Preserve existing window.MEHFIL_WS_URL fallback.
+      try {
+        const envWs = import.meta.env.VITE_MEHFIL_WS_URL;
+        if (envWs && typeof envWs === 'string' && envWs.length) {
+          window.MEHFIL_WS_URL = envWs;
+        }
+      } catch (e) {
+        // import.meta.env access may fail in non-module contexts; ignore silently to preserve behavior
+      }
+    </script>
+    </script>
 
     <!-- 2. Top Navigation Bar -->
     <nav class="fixed top-0 left-0 w-full px-3 py-2.5 sm:px-6 sm:py-4 flex flex-wrap md:flex-nowrap justify-between items-center gap-2 z-20 pt-[max(10px,env(safe-area-inset-top))]">

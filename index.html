@@ -171,6 +171,83 @@
     </style>
 </head>
 <body class="font-sans relative">
+    <script>
+      // Early WS preconnect to eliminate startup delay for Wah/Online
+      (function(){
+        try {
+          if (window.__mehfil_presence_manager && window.__mehfil_presence_manager.ws) return; // already preconnected
+          // Create minimal manager
+          const mgr = {
+            ws: null,
+            connecting: false,
+            shouldReconnect: true,
+            reconnectTimer: null,
+            pingTimer: null,
+            backoffMs: 2000,
+            pendingWahs: 0
+          };
+
+          function chooseUrl(){
+            if (window.MEHFIL_WS_URL && window.MEHFIL_WS_URL.length) return window.MEHFIL_WS_URL;
+            const host = window.location.hostname || 'localhost';
+            const isLocal = (host === 'localhost' || host === '127.0.0.1' || host === '');
+            if (!isLocal) return 'wss://mehfil-e-ghazal.onrender.com';
+            const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            return `${proto}//${host}:3001`;
+          }
+
+          function attachHandlers(ws){
+            ws.addEventListener('open', function(){
+              console.info('[MEHFIL WS] Early Connected');
+              // heartbeat
+              if (mgr.pingTimer) clearInterval(mgr.pingTimer);
+              mgr.pingTimer = setInterval(()=>{ try{ if(mgr.ws && mgr.ws.readyState===WebSocket.OPEN) mgr.ws.send(JSON.stringify({type:'PING'})); }catch(e){} }, 4000);
+              // send queued wahs
+              if (mgr.pendingWahs>0){ const q=mgr.pendingWahs; mgr.pendingWahs=0; for(let i=0;i<q;i++){ try{ mgr.ws.send(JSON.stringify({type:'INCREMENT_WAH'})); console.info('[MEHFIL WS] Wah sent (queued)'); }catch(e){ console.warn('[MEHFIL WS] queued send failed',e); } } }
+            });
+            ws.addEventListener('message', function(evt){
+              try{
+                const msg = JSON.parse(evt.data);
+                console.info('[MEHFIL WS] Early Message', msg.type, msg);
+                if (msg.type==='INIT_STATE'){
+                  const onlineEl = document.getElementById('online-count');
+                  const clapEl = document.getElementById('clap-counter');
+                  if (onlineEl && typeof msg.presenceCount==='number') onlineEl.textContent = `${msg.presenceCount} Online`;
+                  if (clapEl && typeof msg.wahCount==='number') clapEl.textContent = Number(msg.wahCount).toLocaleString();
+                } else if (msg.type==='PRESENCE_COUNT' && typeof msg.count==='number'){
+                  const onlineEl = document.getElementById('online-count'); if(onlineEl) onlineEl.textContent = `${msg.count} Online`;
+                } else if (msg.type==='WAH_COUNT' && typeof msg.count==='number'){
+                  const clapEl = document.getElementById('clap-counter'); if(clapEl) clapEl.textContent = Number(msg.count).toLocaleString();
+                }
+              }catch(e){console.warn('[MEHFIL WS] Early message parse',e);}
+            });
+            ws.addEventListener('close', function(){ console.info('[MEHFIL WS] Early closed'); if (mgr.pingTimer){ clearInterval(mgr.pingTimer); mgr.pingTimer=null;} mgr.ws=null; if (mgr.shouldReconnect){ if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer); mgr.reconnectTimer = setTimeout(()=>{ mgr.backoffMs = Math.min(30000, mgr.backoffMs*2); preconnect(); }, mgr.backoffMs); } });
+            ws.addEventListener('error', function(e){ console.warn('[MEHFIL WS] Early error', e && e.message); try{ if(mgr.ws) mgr.ws.close(); }catch(e){} });
+          }
+
+          function preconnect(){
+            if (!mgr.shouldReconnect) return;
+            if (mgr.ws && (mgr.ws.readyState===WebSocket.OPEN || mgr.ws.readyState===WebSocket.CONNECTING)) return;
+            mgr.connecting=true;
+            try{
+              const url = chooseUrl();
+              console.info('[MEHFIL WS] Early URL', url);
+              const ws = new WebSocket(url);
+              mgr.ws = ws;
+              attachHandlers(ws);
+            }catch(e){ console.warn('[MEHFIL WS] Early connect failed', e); mgr.connecting=false; if (mgr.shouldReconnect){ if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer); mgr.reconnectTimer = setTimeout(preconnect, mgr.backoffMs); mgr.backoffMs = Math.min(30000, mgr.backoffMs*2); } }
+          }
+
+          // expose manager so later initPresenceSocket will reuse it
+          window.__mehfil_presence_manager = mgr;
+          // start immediately
+          preconnect();
+
+          // expose a safe send function for wah (used later when handlers are attached)
+          window.__mehfil_presence_sendWah = function(){ if (mgr.ws && mgr.ws.readyState===WebSocket.OPEN){ try{ mgr.ws.send(JSON.stringify({type:'INCREMENT_WAH'})); console.info('[MEHFIL WS] Wah sent early'); }catch(e){ console.warn('[MEHFIL WS] Wah send early failed',e);} } else { mgr.pendingWahs = (mgr.pendingWahs||0)+1; console.info('[MEHFIL WS] Wah queued early'); preconnect(); } };
+        }catch(e){console.warn('[MEHFIL WS] early preconnect setup failed', e);} 
+      })();
+    </script>
 
     <!-- 1. Background Layers for Smooth Cinematic Crossfade -->
     <div id="bg-container" class="fixed inset-0 w-full h-full min-h-[100dvh] z-0 overflow-hidden pointer-events-none">

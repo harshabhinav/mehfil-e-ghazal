@@ -1318,13 +1318,18 @@
 
             // Send atomic increment request to server (Do NOT mutate local state directly!)
             if (presenceWs && presenceWs.readyState === WebSocket.OPEN) {
+            try {
+                console.log('[WS] WAH SENT');
                 presenceWs.send(JSON.stringify({ type: 'INCREMENT_WAH' }));
+            } catch (err) { console.warn('[WS] WAH SEND ERROR', err); }
+        } else {
+            console.warn('[WS] WAH not sent - socket not open');
             }
             
-            // Web3 integration trigger if available
-            if (typeof isWeb3Configured !== 'undefined' && isWeb3Configured && typeof window.ethereum !== 'undefined') {
-                triggerWeb3Wah();
-            }
+        // Web3 integration trigger if available
+        if (typeof isWeb3Configured !== 'undefined' && isWeb3Configured && typeof window.ethereum !== 'undefined') {
+            triggerWeb3Wah();
+        }
         }
 
         if (wahBtn) {
@@ -1358,16 +1363,18 @@
                 }
 
                 try {
-                    console.log('[WS] Connecting to', getWsEndpoint());
-                    presenceWs = new WebSocket(getWsEndpoint());
+                    const wsUrlToUse = getWsEndpoint();
+                    console.log('[WS] URL:', wsUrlToUse);
+                    console.log('[WS] Connecting to', wsUrlToUse);
+                    presenceWs = new WebSocket(wsUrlToUse);
 
                     presenceWs.addEventListener('open', () => {
-                        console.log('[WS] Open');
+                        console.log('[WS] CONNECTED');
                         window.__presence_socket_open = true;
                         if (pingTimer) clearInterval(pingTimer);
                         pingTimer = setInterval(() => {
                             if (presenceWs && presenceWs.readyState === WebSocket.OPEN) {
-                                presenceWs.send(JSON.stringify({ type: 'PING' }));
+                                try { presenceWs.send(JSON.stringify({ type: 'PING' })); } catch(e) {}
                             }
                         }, 4000);
                     });
@@ -1375,7 +1382,7 @@
                     presenceWs.addEventListener('message', (evt) => {
                         try {
                             const msg = JSON.parse(evt.data);
-                            console.log('[WS] Message', msg.type || 'unknown');
+                            console.log('[WS] MESSAGE', msg.type || 'unknown', msg);
                             if (msg.type === 'INIT_STATE') {
                                 console.log('[WS] INIT_STATE', msg.presenceCount, msg.wahCount);
                                 if (onlineCountEl && typeof msg.presenceCount === 'number') {
@@ -1385,12 +1392,12 @@
                                     updateWahUI(msg.wahCount, false);
                                 }
                             } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
-                                console.log('[WS] PRESENCE_COUNT', msg.count);
+                                console.log('[WS] ONLINE RECEIVED', msg.count);
                                 if (onlineCountEl) {
                                     onlineCountEl.textContent = `${msg.count} Online`;
                                 }
                             } else if (msg.type === 'WAH_COUNT' && typeof msg.count === 'number') {
-                                console.log('[WS] WAH_COUNT', msg.count);
+                                console.log('[WS] WAH RECEIVED', msg.count);
                                 // Server broadcasted newly updated atomic global count
                                 updateWahUI(msg.count, true);
                             }

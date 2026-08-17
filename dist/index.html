@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Mehfil-e-Ghazal</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Global Styles & Background */
+        html, body {
+            width: 100%;
+            height: 100dvh;
+            min-height: 100dvh;
+            overflow-x: hidden;
+            overflow-y: hidden;
+            background-color: #1a1a1a;
+            color: white;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        button, a, input[type="range"] {
+            touch-action: manipulation;
+        }
+
+
+
+        /* Glassmorphism Utilities */
+        .glass-pill {
+            background: rgba(30, 20, 20, 0.4);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .glass-player {
+            background: linear-gradient(135deg, rgba(40, 20, 20, 0.6) 0%, rgba(20, 10, 10, 0.7) 100%);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .glass-card {
+            background: rgba(40, 25, 25, 0.5);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        .glass-card:hover {
+            transform: scale(1.05);
+            background: rgba(50, 30, 30, 0.6);
+        }
+
+        /* Parchment Effect for Community Suggestions */
+        .parchment-bg {
+            background: #fdf5e6;
+            background-image: 
+                radial-gradient(circle, transparent 20%, #fdf5e6 20%, #fdf5e6 80%, transparent 80%, transparent),
+                radial-gradient(circle, transparent 20%, #fdf5e6 20%, #fdf5e6 80%, transparent 80%, transparent) 25px 25px,
+                linear-gradient(#efe8d4 2px, transparent 2px) 0 -1px,
+                linear-gradient(90deg, #efe8d4 2px, #fdf5e6 2px) -1px 0;
+            background-size: 50px 50px, 50px 50px, 25px 25px, 25px 25px;
+            box-shadow: inset 0 0 20px rgba(139, 69, 19, 0.1), 0 5px 15px rgba(0,0,0,0.4);
+            border: 1px solid #e3d5b8;
+        }
+
+        /* Glowing Dot Animation */
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+        }
+        .glowing-dot {
+            animation: pulse-green 2s infinite;
+        }
+
+        .heavy-text-shadow {
+            text-shadow: 0px 10px 30px rgba(0, 0, 0, 0.9), 0px 4px 10px rgba(0, 0, 0, 0.6);
+        }
+
+        .wah-button-active {
+            transform: scale(0.95) !important;
+        }
+
+        /* Vinyl Record Animations */
+        @keyframes slowSpin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .playing-record {
+            animation: slowSpin 5s linear infinite;
+        }
+        .paused-record {
+            animation-play-state: paused;
+        }
+
+        /* Floating Wah Emoji Animation */
+        @keyframes floatUpWah {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, 0) scale(1) rotate(0deg);
+            }
+            50% {
+                opacity: 0.9;
+                transform: translate(-50%, -45px) scale(1.35) rotate(-12deg);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -100px) scale(1.6) rotate(12deg);
+            }
+        }
+        .floating-wah {
+            position: absolute;
+            pointer-events: none;
+            font-size: 2rem;
+            animation: floatUpWah 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+            z-index: 50;
+            filter: drop-shadow(0 4px 10px rgba(0,0,0,0.5));
+        }
+        /* Progress bar: kill ALL native browser CSS transitions so the
+           slider fill tracks audio.currentTime exactly — no interpolation,
+           no visual vibration. Mobile WebKit applies a subtle fill-track
+           transition by default on accent-color styled range inputs. */
+        #progress-bar,
+        #progress-bar-mobile {
+            transition: none !important;
+            -webkit-transition: none !important;
+            animation: none !important;
+            -webkit-animation: none !important;
+        }
+        #progress-bar::-webkit-slider-runnable-track,
+        #progress-bar-mobile::-webkit-slider-runnable-track {
+            transition: none !important;
+            -webkit-transition: none !important;
+        }
+        #progress-bar::-webkit-slider-thumb,
+        #progress-bar-mobile::-webkit-slider-thumb {
+            transition: none !important;
+            -webkit-transition: none !important;
+        }
+        #progress-bar::-moz-range-track,
+        #progress-bar-mobile::-moz-range-track {
+            transition: none !important;
+        }
+        #progress-bar::-moz-range-thumb,
+        #progress-bar-mobile::-moz-range-thumb {
+            transition: none !important;
+        }
+    </style>
+</head>
+<body class="font-sans relative">
+
+    <!-- 1. Background Layers for Smooth Cinematic Crossfade -->
+    <div id="bg-container" class="fixed inset-0 w-full h-full min-h-[100dvh] z-0 overflow-hidden pointer-events-none">
+        <img id="bg-layer-base" alt="Mehfil-e-Ghazal background base" class="absolute inset-0 w-full h-full object-cover object-[center_10%] md:object-center transition-opacity duration-1000 ease-in-out opacity-100 transform-gpu translate-z-0">
+        <img id="bg-layer-overlay" alt="Mehfil-e-Ghazal background overlay" class="absolute inset-0 w-full h-full object-cover object-[center_10%] md:object-center transition-opacity duration-1000 ease-in-out opacity-0 transform-gpu translate-z-0">
+    </div>
+    <script>
+        // Prevent Flash of Wrong Theme by setting initial src synchronously
+        (function() {
+            let initialSrc = '';
+            if (window.innerWidth < 768) {
+                // Mobile: Always force Auto mode initially
+                const h = new Date().getHours();
+                initialSrc = './assets/backgrounds/Night newp9.jpeg';
+                if (h >= 6 && h < 18) initialSrc = './assets/backgrounds/Day p.jpeg';
+                else if (h >= 18 && h < 20) initialSrc = './assets/backgrounds/Evening p.jpeg';
+            } else {
+                // Desktop: Respect localStorage or fallback to Auto
+                const savedTheme = localStorage.getItem('mehfil_theme_mode') || 'auto';
+                if (savedTheme === 'day') initialSrc = './assets/backgrounds/Day2.jpeg';
+                else if (savedTheme === 'evening') initialSrc = './assets/backgrounds/Evening (2).jpeg';
+                else if (savedTheme === 'night') initialSrc = './assets/backgrounds/Night.jpeg';
+                else {
+                    const h = new Date().getHours();
+                    initialSrc = './assets/backgrounds/Night.jpeg';
+                    if (h >= 6 && h < 18) initialSrc = './assets/backgrounds/Day2.jpeg';
+                    else if (h >= 18 && h < 20) initialSrc = './assets/backgrounds/Evening (2).jpeg';
+                }
+            }
+            document.getElementById('bg-layer-base').src = initialSrc;
+            document.getElementById('bg-layer-overlay').src = initialSrc;
+        })();
+    </script>
+
+    <!-- 2. Top Navigation Bar -->
+    <nav class="fixed top-0 left-0 w-full px-3 py-2.5 sm:px-6 sm:py-4 flex flex-wrap md:flex-nowrap justify-between items-center gap-2 z-20 pt-[max(10px,env(safe-area-inset-top))]">
+        <!-- Top-Left: Clock -->
+        <div class="text-xs sm:text-base md:text-lg tracking-wider font-medium text-white/90" id="real-time-clock">
+            --:-- --
+        </div>
+
+        <!-- Top-Center: Online Status & Theme Control -->
+        <div class="flex items-center gap-1.5 sm:gap-3 flex-wrap">
+            <div class="glass-pill px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-full flex items-center gap-1.5">
+                <div class="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-green-400 rounded-full glowing-dot"></div>
+                <span class="text-[11px] sm:text-xs md:text-sm tracking-wide opacity-90" id="online-count">1 Online</span>
+            </div>
+
+            <!-- Manual & Auto Theme Selector -->
+            <div class="glass-pill px-2 py-0.5 sm:px-3 sm:py-1 rounded-full flex items-center gap-0.5 sm:gap-1 text-[10px] sm:text-xs font-medium border border-white/10 shadow-sm" id="theme-selector">
+                <button data-theme="day" class="theme-btn px-1.5 py-0.5 rounded-full transition-all text-white/70 hover:text-white" title="Day Theme">☀️ Day</button>
+                <button data-theme="evening" class="theme-btn px-1.5 py-0.5 rounded-full transition-all text-white/70 hover:text-white" title="Evening Theme">🌆 Eve</button>
+                <button data-theme="night" class="theme-btn px-1.5 py-0.5 rounded-full transition-all text-white/70 hover:text-white" title="Night Theme">🌙 Night</button>
+                <button data-theme="auto" class="theme-btn px-1.5 py-0.5 rounded-full transition-all text-amber-300 font-semibold bg-white/20" title="Automatic Theme">Auto</button>
+            </div>
+        </div>
+
+        <!-- Top-Right: Spotify & YT Music Links -->
+        <div class="flex items-center gap-2 sm:gap-4 text-xs sm:text-[14px] font-medium">
+            <a id="spotify-link" href="https://open.spotify.com" target="_blank" rel="noopener noreferrer" title="Search on Spotify" class="glass-pill px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-full flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/15 transition-all border border-white/10 shadow-sm">
+                <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-400 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm5.521 17.341c-.218.359-.696.475-1.055.257-2.887-1.765-6.522-2.164-10.806-1.185-.413.095-.826-.164-.921-.577-.095-.413.164-.826.577-.921 4.693-1.072 8.718-.619 11.948 1.353.359.218.475.696.257 1.073zm1.474-3.273c-.275.448-.864.59-1.312.316-3.303-2.03-8.337-2.617-12.247-1.428-.504.153-1.037-.134-1.19-.638-.153-.504.134-1.037.638-1.19 4.464-1.355 10.026-.709 13.795 1.611.448.274.59.864.316 1.329zm.126-3.41c-3.957-2.35-10.485-2.567-14.269-1.419-.606.184-1.246-.164-1.43-.77-.184-.606.164-1.246.77-1.43 4.341-1.318 11.534-1.066 16.089 1.637.546.324.726 1.031.402 1.577-.324.545-1.031.725-1.562.405z"/></svg>
+                <span class="hidden sm:inline">Spotify</span>
+            </a>
+            <a id="yt-link" href="https://music.youtube.com" target="_blank" rel="noopener noreferrer" title="Search on YouTube Music" class="glass-pill px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-full flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/15 transition-all border border-white/10 shadow-sm">
+                <img src="/assets/YTMicon-D-byjoy3.jpeg" alt="YT Music" class="w-3.5 h-3.5 sm:w-4 sm:h-4 object-contain rounded-full" />
+                <span class="hidden sm:inline">YT Music</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- 3. The Main Center Heading -->
+    <div class="absolute top-[18%] sm:top-[22%] md:top-[30%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full text-center pointer-events-none z-10 px-4">
+        <h1 class="sr-only">
+            मेहफ़िल-ए-Ghazal
+        </h1>
+    </div>
+
+    <!-- 4. Bottom UI Elements -->
+    <div class="fixed bottom-0 left-0 w-full p-2.5 sm:p-4 md:p-8 z-20 pb-[max(12px,env(safe-area-inset-bottom))] pointer-events-none">
+        <div class="w-full flex flex-col md:flex-row items-center md:items-end justify-between gap-2.5 md:gap-0 pointer-events-auto">
+            
+            <!-- Spacer for left to push player to center on desktop -->
+            <div class="hidden md:block flex-1"></div>
+
+            <!-- Bottom-Center: The Music Player (Grand Centerpiece) -->
+            <div class="w-full max-w-[min(94vw,540px)] md:w-11/12 md:max-w-5xl bg-black/80 md:bg-black/60 p-3 sm:p-5 md:p-8 rounded-2xl md:rounded-full backdrop-blur-xl md:backdrop-blur-md border border-white/15 md:border-white/10 flex flex-col md:flex-row items-center justify-between gap-2.5 md:gap-4 shadow-2xl">
+                <!-- Hidden Audio Element -->
+                <audio id="main-audio" preload="auto"></audio>
+                
+                <!-- Top Row on Mobile / Left Section on Desktop -->
+                <div class="flex items-center gap-2.5 sm:gap-4 w-full md:w-auto flex-1 min-w-0">
+                    <!-- Left: Cover Image (Vinyl / CD Record) -->
+                    <div id="record-container" class="relative w-12 h-12 sm:w-16 sm:h-16 md:w-24 md:h-24 rounded-full overflow-hidden flex items-center justify-center shrink-0 border border-white/30 shadow-md">
+                        <img id="track-cover" src="/assets/hoshwalon-ko-khabar-kya-Ccxu6ls0.jpg" alt="Cover" class="w-full h-full object-cover" />
+                        <div id="record-hole" class="absolute w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 md:w-5 md:h-5 bg-[#111] rounded-full border border-white/30 z-10 pointer-events-none"></div>
+                    </div>
+                    
+                    <!-- Center: Track Details -->
+                    <div class="flex-1 min-w-0 md:px-6">
+                        <h3 id="track-title" class="font-bold text-sm sm:text-lg md:text-2xl text-white tracking-wide truncate">Hoshwalon Ko Khabar Kya</h3>
+                        <p id="track-artist" class="text-xs sm:text-sm md:text-base text-zinc-400 mb-0.5 md:mb-2 truncate">Jagjit Singh</p>
+                        
+                        <!-- Progress Bar Row on Desktop -->
+                        <div class="hidden md:flex items-center gap-3 text-sm text-zinc-400 font-sans">
+                            <span id="current-time">0:00</span>
+                            <input type="range" id="progress-bar" min="0" max="100" value="0" class="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white">
+                            <span id="total-duration">0:00</span>
+                        </div>
+                    </div>
+
+                    <!-- Mobile Wah! Button inside Top Row -->
+                    <button class="md:hidden glass-card rounded-xl px-2.5 py-1.5 flex items-center gap-1 shrink-0 cursor-pointer group active:scale-95 transition-transform" id="wah-btn-mobile">
+                        <span class="text-base">👏</span>
+                        <span class="font-serif font-bold text-amber-50 text-xs" id="clap-counter-mobile">1,234</span>
+                    </button>
+                </div>
+
+                <!-- Progress Bar Row on Mobile -->
+                <div class="flex md:hidden items-center gap-2 text-xs text-zinc-400 font-sans w-full">
+                    <span id="current-time-mobile">0:00</span>
+                    <input type="range" id="progress-bar-mobile" min="0" max="100" value="0" class="w-full h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white">
+                    <span id="total-duration-mobile">0:00</span>
+                </div>
+
+                <!-- Controls Row -->
+                <div class="flex items-center justify-between md:justify-end w-full md:w-auto gap-3 md:gap-5 shrink-0 md:px-2 border-t md:border-t-0 border-white/10 pt-2 md:pt-0">
+                    <div class="flex items-center gap-4 mx-auto md:mx-0">
+                        <button id="prev-btn" class="text-white/80 hover:text-white transition text-xl md:text-2xl p-1" title="Previous Track">⏮</button>
+                        <button id="play-pause-btn" class="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-white text-black flex items-center justify-center font-bold text-2xl md:text-3xl hover:scale-105 transition shadow-md shrink-0" title="Play / Pause">
+                            <svg id="play-icon" class="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 fill-black text-black ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                            <svg id="pause-icon" class="hidden w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 fill-black text-black" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                        </button>
+                        <button id="next-btn" class="text-white/80 hover:text-white transition text-xl md:text-2xl p-1" title="Next Track">⏭</button>
+                    </div>
+                    
+                    <!-- Volume Controls -->
+                    <div class="relative flex items-center justify-center border-l border-white/15 pl-2.5 md:pl-4 ml-0.5 md:ml-1 md:gap-2.5 w-[50px] md:w-auto">
+                        <button id="mute-btn" class="w-9 h-9 md:w-auto md:h-auto rounded-full bg-white md:bg-transparent text-black md:text-white/70 flex items-center justify-center shadow-md md:shadow-none text-base md:text-2xl transition active:scale-95 touch-none" title="Volume Controls">
+                            <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAYGBgYHBgcICAcKCwoLCg8ODAwODxYQERAREBYiFRkVFRkVIh4kHhweJB42KiYmKjY+NDI0PkxERExfWl98fKcBBgYGBgcGBwgIBwoLCgsKDw4MDA4PFhAREBEQFiIVGRUVGRUiHiQeHB4kHjYqJiYqNj40MjQ+TERETF9aX3x8p//CABEIAFgAWAMBIgACEQEDEQH/xAAtAAEAAQUBAAAAAAAAAAAAAAAABwEDBAUGAgEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEAMQAAAC5QAABWgAAAe/ZZycjtyxxUjR4YAAFaVJGy7V0AR/IEfGw57f6gxwK0EmXo/yjtnK9Qeo/kCPzb8vQAAANvqBJnC2Mc8AAAAAAAA//8QAAv/aAAwDAQACAAMAAAAhAAEMAAEAgUMAAJBB0wEgNV8AAA04AAAAAAAA/8QAAv/aAAwDAQACAAMAAAAQ884w8848B9w8sMc8sM4Z8g4888sF88888888/8QAFBEBAAAAAAAAAAAAAAAAAAAAUP/aAAgBAgEBPwAT/8QAGBEAAwEBAAAAAAAAAAAAAAAAAREgMBD/2gAIAQMBAT8AxIow+Gnj/8QAMxAAAQMBBAUKBwEAAAAAAAAAAQIDBAAFERIxIDA1UXIQExQVISJBQnGRBjIzNEBSU2L/2gAIAQEAAT8C/BAJyGqjRXZLgQ2Kg2czERleo5mrQQETX0jLFpJbWr5Uk10d/wDkr2qJZsiS5hwlI8SaiRGYreBA9Tv5LU+/kcWlCjtsx20pHlF+jaV3WL1+WOn7MjOx+fhrvuHanQGdM/Rb4Ro2rtCRxV8PrX0tSPKU9tSwEyXgMsZ5RUcgsNEfqNG1dov8VIVEsuMSlwLeWmlEkknx0I1qy46MCFd3ca6/nf49qhW8ouYZAFx8RSVBQBBvHJa20H/XU2dajkU4Vd5vdupl5t9sLbVeDVrbQf8AXVRpsiMTzS7qWtTi1LUbyc9f/8QAJhAAAgECBAUFAAAAAAAAAAAAAREAIDEhMEFxEEBRscGBkaHw8f/aAAgBAQABPyHkSyIdsp1Um50G8UQF9+IKVAaFXwbBz9FBVJtkoE92FWoxIgvYZC1JNPv82j2xxq9FjefT9Kg6gNZZrI43CFQYPbpBgjDPOWkK0yTPrQrE6ANcA6KS0oCsQMEZdj7iX8EHEmXKJ8xFxcR8Jss//8QAJRABAAIABQQBBQAAAAAAAAAAAQARECAhUWEwMUFxoUCBkbHw/9oACAEBAAE/EPobUGroLERROikN3A7qDScVu/EBzoxmZSp73/pgMEXgpgz2qv7xwEVZDQ3ZoM4XRBVZRtKxFO2nJZe4+5RFMfjp/W25TCQKs8OUpfyxoM9hIPulJ6ZRsgswjuuMyx0rbqtyDg7xWWaNNUD1IQ5LWI4fAy84xRWtXvykZMaJ44Y163RGI0B1y2MQRb5Xr//Z" alt="Volume" class="w-5 h-5 object-contain rounded-full md:hidden" />
+                            <span class="hidden md:inline">🔊</span>
+                        </button>
+                        <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1" class="w-24 lg:w-28 h-2 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white hidden md:block" title="Volume" />
+                        <span id="volume-pct-desktop" class="hidden md:inline text-xs text-zinc-300 font-sans font-medium min-w-[34px] text-left">100%</span>
+                        
+                        <!-- Mobile Vertical Volume Slider Popover Overlay (Mobile Only) -->
+                        <div id="volume-popover" class="hidden md:!hidden absolute bottom-full mb-3 left-[2px] md:left-1/2 md:transform md:-translate-x-1/2 glass-card rounded-2xl py-3 px-2 flex flex-col items-center gap-2 border border-white/20 shadow-2xl z-30 w-[46px] touch-none">
+                            <span id="volume-pct-label" class="text-[10px] text-zinc-300 font-sans font-medium">100%</span>
+                            <div class="h-28 flex items-center justify-center py-1 touch-none">
+                                <input type="range" id="volume-slider-mobile" min="0" max="1" step="0.01" value="1" class="h-24 w-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white [writing-mode:vertical-lr] [direction:rtl] touch-none" title="Volume" />
+                            </div>
+                            <span class="text-xs opacity-75">🔊</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side Container on Desktop -->
+            <div class="hidden md:flex flex-1 justify-end">
+                <!-- Bottom-Right: The "Wah!" Interactive Button -->
+                <button class="glass-card rounded-2xl p-4 w-[110px] h-[110px] flex flex-col items-center justify-center relative cursor-pointer group" id="wah-btn">
+                    <span class="absolute top-2 right-3 text-[10px] font-bold text-amber-200/90" id="clap-counter">1,234</span>
+                    <div class="text-3xl mb-1 group-hover:-translate-y-1 transition-transform">👏</div>
+                    <span class="font-serif font-bold text-amber-50">Wah!</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Core -->
+    <script>
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 🌄 MEHFIL THEME IMAGES CONFIGURATION (DESKTOP & MOBILE)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        const DESKTOP_THEME_IMAGES = {
+            day: "./assets/backgrounds/Day2.jpeg",
+            evening: "./assets/backgrounds/Evening (2).jpeg",
+            night: "./assets/backgrounds/Night.jpeg"
+        };
+
+        const MOBILE_THEME_IMAGES = {
+            day: "./assets/backgrounds/Day p.jpeg",
+            evening: "./assets/backgrounds/Evening p.jpeg",
+            night: "./assets/backgrounds/Night newp9.jpeg"
+        };
+
+        // Theme State Management
+        let activeThemeMode = localStorage.getItem('mehfil_theme_mode') || 'auto'; // 'day', 'evening', 'night', or 'auto'
+        if (window.innerWidth < 768) {
+            activeThemeMode = 'auto';
+        }
+        let currentDisplayedThemeState = null;
+        let activeLayerIndex = 0; // 0: base layer, 1: overlay layer
+
+        // Pre-cache all desktop and mobile theme images for zero-lag smooth crossfade
+        [...Object.values(DESKTOP_THEME_IMAGES), ...Object.values(MOBILE_THEME_IMAGES)].forEach(src => {
+            const img = new Image();
+            img.src = src;
+        });
+
+        function getTimeBasedTheme() {
+            const now = new Date();
+            const hours = now.getHours(); // Local user/device hour (0-23)
+            if (hours >= 6 && hours < 18) {
+                return 'day'; // 6:00 AM – 5:59 PM
+            } else if (hours >= 18 && hours < 20) {
+                return 'evening'; // 6:00 PM – 7:59 PM
+            } else {
+                return 'night'; // 8:00 PM – 5:59 AM
+            }
+        }
+
+        function getThemeImageSrc(themeKey) {
+            const isMobile = window.innerWidth < 768;
+            const themeMap = isMobile ? MOBILE_THEME_IMAGES : DESKTOP_THEME_IMAGES;
+            return themeMap[themeKey] || themeMap.evening;
+        }
+
+        function applyTheme(targetThemeKey, force = false) {
+            const isMobile = window.innerWidth < 768;
+            const stateKey = `${targetThemeKey}_${isMobile ? 'mobile' : 'desktop'}`;
+
+            if (!force && currentDisplayedThemeState === stateKey) return;
+            currentDisplayedThemeState = stateKey;
+
+            const targetImageSrc = getThemeImageSrc(targetThemeKey);
+            const baseLayer = document.getElementById('bg-layer-base');
+            const overlayLayer = document.getElementById('bg-layer-overlay');
+
+            if (!baseLayer || !overlayLayer) return;
+
+            if (activeLayerIndex === 0) {
+                overlayLayer.src = targetImageSrc;
+                overlayLayer.style.opacity = '1';
+                baseLayer.style.opacity = '0';
+                activeLayerIndex = 1;
+            } else {
+                baseLayer.src = targetImageSrc;
+                baseLayer.style.opacity = '1';
+                overlayLayer.style.opacity = '0';
+                activeLayerIndex = 0;
+            }
+        }
+
+        function updateThemeSystem(force = false) {
+            let effectiveTheme = activeThemeMode;
+            if (activeThemeMode === 'auto') {
+                effectiveTheme = getTimeBasedTheme();
+            }
+            applyTheme(effectiveTheme, force);
+            updateThemeUIButtons();
+        }
+
+        function updateThemeUIButtons() {
+            const buttons = document.querySelectorAll('.theme-btn');
+            buttons.forEach(btn => {
+                const mode = btn.getAttribute('data-theme');
+                if (mode === activeThemeMode) {
+                    btn.classList.add('bg-white/20', 'text-amber-300', 'font-semibold');
+                    btn.classList.remove('text-white/70');
+                } else {
+                    btn.classList.remove('bg-white/20', 'text-amber-300', 'font-semibold');
+                    btn.classList.add('text-white/70');
+                }
+            });
+        }
+
+        // Initialize Theme System & Attach Button Click Listeners
+        updateThemeSystem(true);
+
+        window.addEventListener('resize', () => {
+            updateThemeSystem();
+        });
+
+        document.querySelectorAll('.theme-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const selectedMode = btn.getAttribute('data-theme');
+                activeThemeMode = selectedMode;
+                localStorage.setItem('mehfil_theme_mode', selectedMode);
+                updateThemeSystem();
+            });
+        });
+
+        // 1. Real-time Clock & Time-based Auto Theme Check
+        function updateClock() {
+            const now = new Date();
+            let hours = now.getHours();
+            let minutes = now.getMinutes();
+            const ampm = hours >= 12 ? 'pm' : 'am';
+            
+            hours = hours % 12;
+            hours = hours ? hours : 12; 
+            minutes = minutes < 10 ? '0' + minutes : minutes;
+            
+            const timeString = `${hours}:${minutes} ${ampm}`;
+            const clockEl = document.getElementById('real-time-clock');
+            if (clockEl) clockEl.textContent = timeString;
+
+            // Automatically update theme if Auto mode is active
+            if (activeThemeMode === 'auto') {
+                updateThemeSystem();
+            }
+        }
+        
+        updateClock();
+        setInterval(updateClock, 1000);
+
+        // 2. Audio Player & Playlist Logic
+        const mainAudio = document.getElementById('main-audio');
+        const playPauseBtn = document.getElementById('play-pause-btn');
+        const playIcon = document.getElementById('play-icon');
+        const pauseIcon = document.getElementById('pause-icon');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const trackTitle = document.getElementById('track-title');
+        const trackArtist = document.getElementById('track-artist');
+        const currentTimeEl = document.getElementById('current-time');
+        const totalDurationEl = document.getElementById('total-duration');
+        const progressBar = document.getElementById('progress-bar');
+        const trackCover = document.getElementById('track-cover');
+        const recordContainer = document.getElementById('record-container');
+        const volumeSlider = document.getElementById('volume-slider');
+        const muteBtn = document.getElementById('mute-btn');
+        const spotifyLink = document.getElementById('spotify-link');
+        const ytLink = document.getElementById('yt-link');
+
+        const playlist = [
+            {
+                title: "Hoshwalon Ko Khabar Kya",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/hoshwalon-ko-khabar-kya.mpeg",
+                cover: "./assets/covers/hoshwalon-ko-khabar-kya.jpg"
+            },
+            {
+                title: "Mujhe Tum Nazar Se",
+                artist: "Mehdi Hassan",
+                src: "./assets/audio/mujhe-tum-nazar-se.mpeg",
+                cover: "./assets/covers/mujhe-tum-nazar-se.jpeg"
+            },
+            {
+                title: "Kal Chaudhvin Ki Raat Thi",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/kal-chaudhvin-ki-raat-thi.mpeg",
+                cover: "./assets/covers/kal-chaudhvin-ki-raat-thi.jpg"
+            },
+            {
+                title: "Salona Sa Sajan Hai",
+                artist: "Asha Bhosle",
+                src: "./assets/audio/salona-sa-sajan-hai.mpeg",
+                cover: "./assets/covers/salona-sa-sajan-hai.jpg"
+            },
+            {
+                title: "Hungama Hai Kyon Barpa",
+                artist: "Ghulam Ali",
+                src: "./assets/audio/hungama-hai-kyon-barpa.mp3",
+                cover: "./assets/covers/hungama-hai-kyon-barpa.webp"
+            },
+            {
+                title: "Mohabbat Karne Wale",
+                artist: "Mehdi Hassan",
+                src: "./assets/audio/mohabbat-karne-wale.mp3",
+                cover: "./assets/covers/mohabbat-karne-wale.jpg"
+            },
+            {
+                title: "Us Mod Se Shuroo Karen",
+                artist: "Jagjit Singh & Chitra Singh",
+                src: "./assets/audio/us-mod-se-shuroo-karen.mpeg",
+                cover: "./assets/covers/us-mod-se-shuroo-karen.jpg"
+            },
+            {
+                title: "Chupke Chupke Raat Din",
+                artist: "Ghulam Ali",
+                src: "./assets/audio/chupke-chupke-raat-din.mp3",
+                cover: "./assets/covers/chupke-chupke-raat-din.jpg"
+            },
+            {
+                title: "Rafta Rafta Woh Meri",
+                artist: "Mehdi Hassan",
+                src: "./assets/audio/rafta-rafta-woh-meri.mpeg",
+                cover: "./assets/covers/rafta-rafta-woh-meri.jpg"
+            },
+            {
+                title: "Kaash Aisa Koi Manzar Hota",
+                artist: "Hariharan",
+                src: "./assets/audio/kaash-aisa-koi-manzar-hota.mpeg",
+                cover: "./assets/covers/kaash-aisa-koi-manzar-hota.jpg"
+            },
+            {
+                title: "Pyaar Ka Pehla Khat",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/pyaar-ka-pehla-khat.mpeg",
+                cover: "./assets/covers/pyaar-ka-pehla-khat.webp"
+            },
+            {
+                title: "Humko Kis Ke Gham Ne Mara",
+                artist: "Ghulam Ali",
+                src: "./assets/audio/humko-kis-ke-gham-ne-mara.mp3",
+                cover: "./assets/covers/humko-kis-ke-gham-ne-mara.jpg"
+            },
+            {
+                title: "Dil Mein Ek Lehr Si Uthi Hai",
+                artist: "Ghulam Ali",
+                src: "./assets/audio/dil-mein-ek-lehr-si-uthi-hai.mpeg",
+                cover: "./assets/covers/dil-mein-ek-lehr-si-uthi-hai.jpg"
+            },
+            {
+                title: "Tum Ko Dekha To Yeh Khayal Aaya",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/tum-ko-dekha-to-yeh-khayal-aaya.mpeg",
+                cover: "./assets/covers/tum-ko-dekha-to-yeh-khayal-aaya.webp"
+            },
+            {
+                title: "Main Hawa Hoon Kahan Watan Mera",
+                artist: "Ahmed Hussain & Mohammad Hussain",
+                src: "./assets/audio/main-hawa-hoon-kahan-watan-mera.mp3",
+                cover: "./assets/covers/main-hawa-hoon-kahan-watan-mera.jpg"
+            },
+            {
+                title: "Hamari Saanson Mein Aaj Tak",
+                artist: "Mehdi Hassan",
+                src: "./assets/audio/hamari-saanson-mein-aaj-tak.mpeg",
+                cover: "./assets/covers/hamari-saanson-mein-aaj-tak.jpg"
+            },
+            {
+                title: "Jhuki Jhuki Si Nazar",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/jhuki-jhuki-si-nazar.mpeg",
+                cover: "./assets/covers/jhuki-jhuki-si-nazar.jpg"
+            },
+            {
+                title: "Itni Muddat Baad Mile Ho",
+                artist: "Ghulam Ali",
+                src: "./assets/audio/itni-muddat-baad-mile-ho.mp3",
+                cover: "./assets/covers/itni-muddat-baad-mile-ho.jpg"
+            },
+            {
+                title: "Aaye Kuch Abr Kuch",
+                artist: "Mehdi Hassan",
+                src: "./assets/audio/aaye-kuch-abr-kuch.mpeg",
+                cover: "./assets/covers/aaye-kuch-abr-kuch.jpg"
+            },
+            {
+                title: "Main Nashe Mein Hoon",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/main-nashe-mein-hoon.mp3",
+                cover: "./assets/covers/main-nashe-mein-hoon.jpg"
+            },
+            {
+                title: "Ranjish Hi Sahi",
+                artist: "Mehdi Hassan",
+                src: "./assets/audio/ranjish-hi-sahi.mp3",
+                cover: "./assets/covers/ranjish-hi-sahi.jpg"
+            },
+            {
+                title: "Chandi Jaisa Rang Hai Tera",
+                artist: "Pankaj Udhas",
+                src: "./assets/audio/chandi-jaisa-rang-hai-tera.mp3",
+                cover: "./assets/covers/chandi-jaisa-rang-hai-tera.jpg"
+            },
+            {
+                title: "Aaj Jane Ki Zid Na Karo",
+                artist: "Farida Khanum",
+                src: "./assets/audio/aaj-jane-ki-zid-na-karo.mp3",
+                cover: "./assets/covers/aaj-jane-ki-zid-na-karo.jpg"
+            },
+            {
+                title: "Patta Patta Boota Boota",
+                artist: "Mehdi Hassan",
+                src: "./assets/audio/patta-patta-boota-boota.mpeg",
+                cover: "./assets/covers/patta-patta-boota-boota.jpg"
+            },
+            {
+                title: "Woh Kagaz Ki Kashti",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/woh-kagaz-ki-kashti.mpeg",
+                cover: "./assets/covers/woh-kagaz-ki-kashti.jpg"
+            },
+            {
+                title: "Hazaron Khwahishen Aisi",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/hazaron-khwahishen-aisi.mpeg",
+                cover: "./assets/covers/hazaron-khwahishen-aisi.jpg"
+            },
+            {
+                title: "Aye Sanam Tujhse Main",
+                artist: "Ahmed Hussain & Mohammad Hussain",
+                src: "./assets/audio/aye-sanam-tujhse-main.mp3",
+                cover: "./assets/covers/aye-sanam-tujhse-main.jpg"
+            },
+            {
+                title: "Duniya Kisi Ke Pyar Mein",
+                artist: "Mehdi Hassan",
+                src: "./assets/audio/duniya-kisi-ke-pyar-mein.mpeg",
+                cover: "./assets/covers/duniya-kisi-ke-pyar-mein.jpg"
+            },
+            {
+                title: "Chithi Na Koi Sandesh",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/chithi-na-koi-sandesh.mp3",
+                cover: "./assets/covers/chithi-na-koi-sandesh.jpg"
+            },
+            {
+                title: "Yeh Dil Ye Paagal Dil Mera",
+                artist: "Ghulam Ali",
+                src: "./assets/audio/yeh-dil-ye-paagal-dil-mera.mp3",
+                cover: "./assets/covers/yeh-dil-ye-paagal-dil-mera.jpg"
+            },
+            {
+                title: "Koi Fariyaad",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/koi-fariyaad.mp3",
+                cover: "./assets/covers/koi-fariyaad.jpg"
+            },
+            {
+                title: "Apni Dhun Mein Rehta Hoon",
+                artist: "Ghulam Ali",
+                src: "./assets/audio/apni-dhun-mein-rehta-hoon.mp3",
+                cover: "./assets/covers/apni-dhun-mein-rehta-hoon.jpg"
+            },
+            {
+                title: "Yeh Kaghazi Phool Jaise Chehre",
+                artist: "Mehdi Hassan",
+                src: "./assets/audio/yeh-kaghazi-phool-jaise-chehre.mpeg",
+                cover: "./assets/covers/yeh-kaghazi-phool-jaise-chehre.jpg"
+            },
+            {
+                title: "Badi Nazuk Hai Ye Manzil",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/badi-nazuk-hai-ye-manzil.mpeg",
+                cover: "./assets/covers/badi-nazuk-hai-ye-manzil.jpg"
+            },
+            {
+                title: "Tum Itna Jo Muskura Rahe Ho",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/tum-itna-jo-muskura-rahe-ho.mpeg",
+                cover: "./assets/covers/tum-itna-jo-muskura-rahe-ho.jpg"
+            },
+            {
+                title: "Soniye Je Tere Naal",
+                artist: "Ustad Hussain Baksh Gullo",
+                src: "./assets/audio/soniye-je-tere-naal.mpeg",
+                cover: "./assets/covers/soniye-je-tere-naal.jpg"
+            },
+            {
+                title: "Sanun Nehar Wale Pul Te Bulake",
+                artist: "Noor Jehan",
+                src: "./assets/audio/sanun-nehar-wale-pul-te-bulake.mpeg",
+                cover: "./assets/covers/sanun-nehar-wale-pul-te-bulake.jpg"
+            },
+            {
+                title: "Ahista",
+                artist: "Pankaj Udhas",
+                src: "./assets/audio/ahista.mp3",
+                cover: "./assets/covers/ahista.jpg"
+            },
+            {
+                title: "Ek Pyar Ka Naghma Hai",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/ek-pyar-ka-naghma-hai.mpeg",
+                cover: "./assets/covers/ek-pyar-ka-naghma-hai.jpg"
+            },
+            {
+                title: "Mere Hamnafas Mere Humnawa",
+                artist: "Begum Akhtar",
+                src: "./assets/audio/mere-hamnafas-mere-humnawa.mp3",
+                cover: "./assets/covers/mere-hamnafas-mere-humnawa.jpg"
+            },
+            {
+                title: "Baat Niklegi To Phir Door Talak",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/baat-niklegi-to-phir-door-talak.mpeg",
+                cover: "./assets/covers/baat-niklegi-to-phir-door-talak.jpg"
+            },
+            {
+                title: "Dil Jalane Ki Baat",
+                artist: "Farida Khanum",
+                src: "./assets/audio/dil-jalane-ki-baat.mp3",
+                cover: "./assets/covers/dil-jalane-ki-baat.jpg"
+            },
+            {
+                title: "Mehfil Mein Baar Baar",
+                artist: "Ghulam Ali",
+                src: "./assets/audio/mehfil-mein-baar-baar.mpeg",
+                cover: "./assets/covers/mehfil-mein-baar-baar.jpg"
+            },
+            {
+                title: "Aap Ko Dekhkar Dekhta Rah Gaya",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/aap-ko-dekhkar-dekhta-rah-gaya.mp3",
+                cover: "./assets/covers/aap-ko-dekhkar-dekhta-rah-gaya.jpg"
+            },
+            {
+                title: "Tere Milna Bahut Achha Lage Hai",
+                artist: "Mehndi Hasan & Lata Mangeshkar",
+                src: "./assets/audio/tere-milna-bahut-achha-lage-hai.mpeg",
+                cover: "./assets/covers/tere-milna-bahut-achha-lage-hai.jpg"
+            },
+            {
+                title: "Agar Hum Kahen Aur Woh Muskara Den",
+                artist: "Jagjit Singh & Chitra Singh",
+                src: "./assets/audio/agar-hum-kahen-aur-woh-muskara-den.mpeg",
+                cover: "./assets/covers/agar-hum-kahen-aur-woh-muskara-den.jpg"
+            },
+            {
+                title: "Yeh Tera Ghar Yeh Mera",
+                artist: "Jagjit Singh & Chitra Singh",
+                src: "./assets/audio/yeh-tera-ghar-yeh-mera.mpeg",
+                cover: "./assets/covers/yeh-tera-ghar-yeh-mera.jpg"
+            },
+            {
+                title: "Phir Chhidi Raat",
+                artist: "Lata Mangeshkar & Talat Aziz",
+                src: "./assets/audio/phir-chhidi-raat.mpeg",
+                cover: "./assets/covers/phir-chhidi-raat.jpg"
+            },
+            {
+                title: "Kaise Sukoon Paoon",
+                artist: "Talat Aziz",
+                src: "./assets/audio/kaise-sukoon-paoon.mp3",
+                cover: "./assets/covers/kaise-sukoon-paoon.jpg"
+            },
+            {
+                title: "Kisi Nazar Ko Tera Intezar",
+                artist: "Asha Bhosle & Bhupinder",
+                src: "./assets/audio/kisi-nazar-ko-tera-intezar.mpeg",
+                cover: "./assets/covers/kisi-nazar-ko-tera-intezar.jpg"
+            },
+            {
+                title: "Chitthi Aai Hai",
+                artist: "Pankaj Udhas",
+                src: "./assets/audio/chitthi-aai-hai.mp3",
+                cover: "./assets/covers/chitthi-aai-hai.jpg"
+            },
+            {
+                title: "Hum Tere Shahar Mein Aaye Hain",
+                artist: "Ghulam Ali",
+                src: "./assets/audio/hum-tere-shahar-mein-aaye-hain.mpeg",
+                cover: "./assets/covers/hum-tere-shahar-mein-aaye-hain.jpg"
+            },
+            {
+                title: "Koi Yeh Kaise Bataye",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/koi-yeh-kaise-bataye.mp3",
+                cover: "./assets/covers/koi-yeh-kaise-bataye.jpg"
+            },
+            {
+                title: "Do Ghadi Baitho",
+                artist: "Mohammed Rafi",
+                src: "./assets/audio/do-ghadi-baitho.mp3",
+                cover: "./assets/covers/do-ghadi-baitho.jpg"
+            },
+            {
+                title: "Jeevan Kya Hai",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/jeevan-kya-hai.mp3",
+                cover: "./assets/covers/jeevan-kya-hai.jpg"
+            },
+            {
+                title: "Tere Aane Ki Jab Khabar Mehke",
+                artist: "Jagjit Singh",
+                src: "./assets/audio/tere-aane-ki-jab-khabar-mehke.mp3",
+                cover: "./assets/covers/tere-aane-ki-jab-khabar-mehke.jpg"
+            },
+            {
+                title: "Beh Ja Mere Kol",
+                artist: "Ghulam Ali",
+                src: "./assets/audio/beh-ja-mere-kol.mp3",
+                cover: "./assets/covers/beh-ja-mere-kol.jpg"
+            },
+            {
+                title: "Main Jis Din Bhuladoon",
+                artist: "Mehdi Hassan",
+                src: "./assets/audio/main-jis-din-bhuladoon.mp3",
+                cover: "./assets/covers/main-jis-din-bhuladoon.jpg"
+            },
+            {
+                title: "Chamakte Chand Ko",
+                artist: "Ghulam Ali",
+                src: "./assets/audio/chamakte-chand-ko.mp3",
+                cover: "./assets/covers/chamakte-chand-ko.jpg"
+            }
+        ];
+
+        // Media Session API Integration (OS-Level Media Controls)
+        function registerMediaAction(action, handler) {
+            if (!('mediaSession' in navigator)) return;
+            try {
+                navigator.mediaSession.setActionHandler(action, handler);
+            } catch (error) {
+                console.warn(`Media Session action "${action}" is not supported`, error);
+            }
+        }
+
+        function updateMediaSessionMetadata() {
+            if (!('mediaSession' in navigator)) return;
+            const track = playlist[currentTrackIndex];
+            if (!track) return;
+            try {
+                const coverUrl = track.cover ? new URL(track.cover, window.location.href).href : new URL('./assets/icons/images.jpg', window.location.href).href;
+                
+                let mimeType = 'image/jpeg';
+                if (coverUrl.endsWith('.png')) mimeType = 'image/png';
+                else if (coverUrl.endsWith('.webp')) mimeType = 'image/webp';
+
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: track.title || 'Mehfil-e-Ghazal',
+                    artist: track.artist || 'Ghazal Artist',
+                    album: "Mehfil-e-Ghazal",
+                    artwork: [
+                        { src: coverUrl, sizes: "512x512", type: mimeType }
+                    ]
+                });
+            } catch (err) {
+                console.warn("MediaSession metadata update error:", err);
+            }
+        }
+
+        function updateMediaSessionPositionState(customPos = null) {
+            if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setPositionState !== 'function') return;
+            try {
+                if (customPos !== null) {
+                    navigator.mediaSession.setPositionState({
+                        duration: 100,
+                        playbackRate: 1,
+                        position: 0
+                    });
+                    return;
+                }
+                if (mainAudio.duration && !isNaN(mainAudio.duration) && mainAudio.duration > 0) {
+                    const pos = Math.min(Math.max(0, mainAudio.currentTime || 0), mainAudio.duration);
+                    navigator.mediaSession.setPositionState({
+                        duration: mainAudio.duration,
+                        playbackRate: mainAudio.playbackRate || 1,
+                        position: pos
+                    });
+                }
+            } catch (err) {
+                console.warn("MediaSession positionState update error:", err);
+            }
+        }
+
+        let currentTrackIndex = 0;
+
+        function handleNextTrack() {
+            currentTrackIndex = (currentTrackIndex + 1) % playlist.length;
+            loadTrack(currentTrackIndex, true);
+        }
+
+        function handlePrevTrack() {
+            currentTrackIndex = (currentTrackIndex - 1 + playlist.length) % playlist.length;
+            loadTrack(currentTrackIndex, true);
+        }
+
+        function setupMediaSessionActionHandlers() {
+            if (!('mediaSession' in navigator)) return;
+            registerMediaAction('play', () => { playTrack(); });
+            registerMediaAction('pause', () => { pauseTrack(); });
+            registerMediaAction('previoustrack', handlePrevTrack);
+            registerMediaAction('nexttrack', handleNextTrack);
+            registerMediaAction('seekbackward', (details) => {
+                const skipTime = (details && details.seekOffset) ? details.seekOffset : 10;
+                if (mainAudio.duration) {
+                    mainAudio.currentTime = Math.max(0, mainAudio.currentTime - skipTime);
+                    maxTimeSeen = mainAudio.currentTime;
+                    updateMediaSessionPositionState();
+                }
+            });
+            registerMediaAction('seekforward', (details) => {
+                const skipTime = (details && details.seekOffset) ? details.seekOffset : 10;
+                if (mainAudio.duration) {
+                    mainAudio.currentTime = Math.min(mainAudio.duration, mainAudio.currentTime + skipTime);
+                    maxTimeSeen = mainAudio.currentTime;
+                    updateMediaSessionPositionState();
+                }
+            });
+            registerMediaAction('seekto', (details) => {
+                if (details && details.seekTime !== undefined && mainAudio.duration) {
+                    mainAudio.currentTime = Math.min(Math.max(0, details.seekTime), mainAudio.duration);
+                    maxTimeSeen = mainAudio.currentTime;
+                    updateMediaSessionPositionState();
+                }
+            });
+        }
+
+        // Initialize OS Media Session Action Handlers immediately on script load
+        setupMediaSessionActionHandlers();
+
+        // 🚀 HIGH-PERFORMANCE MOBILE AUDIO & TRACK ENGINE
+        let activeTrackRequestId = 0;
+
+        function loadTrack(index, shouldPlay = false) {
+            currentTrackIndex = index;
+            const requestId = ++activeTrackRequestId;
+
+            // 1. Reset progress state for new track (timeupdate-driven, no RAF to cancel)
+            lastDisplayedSeconds = -1;
+            maxTimeSeen = 0;
+
+            // 2. Set new track source FIRST (this binds browser media engine to the element)
+            const track = playlist[index];
+            mainAudio.src = track.src;
+
+            // 3. Immediately update OS MediaSession Metadata & Playback State synchronously AFTER source binding
+            updateMediaSessionMetadata();
+            if ('mediaSession' in navigator) {
+                try {
+                    navigator.mediaSession.playbackState = shouldPlay ? "playing" : "paused";
+                    updateMediaSessionPositionState(0);
+                } catch (e) {}
+            }
+
+            // 4. Immediately trigger play/pause synchronously at top of user gesture stack
+            if (shouldPlay) {
+                playTrack();
+            } else {
+                pauseTrack();
+            }
+
+            // 5. Update Title, Artist & Album Cover INSTANTLY (single direct DOM update)
+            trackTitle.textContent = track.title;
+            trackArtist.textContent = track.artist;
+            if (trackCover && track.cover) {
+                trackCover.src = track.cover;
+            }
+
+            // 6. Reset progress bar & timestamps to 0:00 immediately
+            if (progressBar) progressBar.value = 0;
+            if (progressBarMobile) progressBarMobile.value = 0;
+            if (currentTimeEl) currentTimeEl.textContent = '0:00';
+            if (currentTimeElMobile) currentTimeElMobile.textContent = '0:00';
+            if (totalDurationEl) totalDurationEl.textContent = '0:00';
+            if (totalDurationElMobile) totalDurationElMobile.textContent = '0:00';
+
+            // 7. Dynamic Spotify & YT Music Links
+            const searchTerms = encodeURIComponent(`${track.title} ${track.artist}`);
+            if (spotifyLink) spotifyLink.href = `https://open.spotify.com/search/${searchTerms}`;
+            if (ytLink) ytLink.href = `https://music.youtube.com/search?q=${searchTerms}`;
+        }
+
+        function playTrack() {
+            if ('mediaSession' in navigator) {
+                try { navigator.mediaSession.playbackState = "playing"; } catch (e) {}
+            }
+            playIcon.classList.add('hidden');
+            pauseIcon.classList.remove('hidden');
+            if (recordContainer) {
+                recordContainer.classList.add('playing-record');
+                recordContainer.classList.remove('paused-record');
+            }
+            const playPromise = mainAudio.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    updateMediaSessionPositionState();
+                }).catch(err => {
+                    // If the user quickly tapped Next/Prev, previous play promise is aborted — do NOT pause
+                    if (err.name !== 'AbortError') {
+                        console.warn("Playback prevented or audio missing:", err);
+                        pauseTrack();
+                    }
+                });
+            }
+        }
+
+        function pauseTrack() {
+            mainAudio.pause();
+            playIcon.classList.remove('hidden');
+            pauseIcon.classList.add('hidden');
+            if (recordContainer) {
+                recordContainer.classList.add('paused-record');
+            }
+            if ('mediaSession' in navigator) {
+                try { navigator.mediaSession.playbackState = "paused"; } catch (e) {}
+            }
+        }
+
+        playPauseBtn.addEventListener('click', () => {
+            if (mainAudio.paused) {
+                playTrack();
+            } else {
+                pauseTrack();
+            }
+        });
+
+        prevBtn.addEventListener('click', handlePrevTrack);
+        nextBtn.addEventListener('click', handleNextTrack);
+        mainAudio.addEventListener('ended', handleNextTrack);
+
+        // 2. Audio Player & Playlist Elements
+        const progressBarMobile = document.getElementById('progress-bar-mobile');
+        const currentTimeElMobile = document.getElementById('current-time-mobile');
+        const totalDurationElMobile = document.getElementById('total-duration-mobile');
+        const wahBtnMobile = document.getElementById('wah-btn-mobile');
+        const clapCounterMobile = document.getElementById('clap-counter-mobile');
+
+        function formatTime(seconds) {
+            if (isNaN(seconds)) return "0:00";
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+
+        let isSeeking = false;
+        let lastDisplayedSeconds = -1;
+        let maxTimeSeen = 0;
+
+        function updateProgressUI() {
+            if (isSeeking) return;
+            if (!mainAudio || !mainAudio.duration || isNaN(mainAudio.duration) || mainAudio.duration <= 0) return;
+
+            let current = mainAudio.currentTime;
+            const duration = mainAudio.duration;
+
+            // Enforce monotonically increasing time: never let the display go backward
+            // during normal playback. Only resets happen on seek or track change.
+            if (current < maxTimeSeen) {
+                current = maxTimeSeen;
+            } else {
+                maxTimeSeen = current;
+            }
+
+            const pct = (current / duration) * 100;
+            if (progressBar) progressBar.value = pct;
+            if (progressBarMobile) progressBarMobile.value = pct;
+
+            const currentSec = Math.floor(current);
+            if (currentSec !== lastDisplayedSeconds) {
+                lastDisplayedSeconds = currentSec;
+                const formattedCurrent = formatTime(current);
+                const formattedTotal = formatTime(duration);
+                if (currentTimeEl) currentTimeEl.textContent = formattedCurrent;
+                if (currentTimeElMobile) currentTimeElMobile.textContent = formattedCurrent;
+                if (totalDurationEl) totalDurationEl.textContent = formattedTotal;
+                if (totalDurationElMobile) totalDurationElMobile.textContent = formattedTotal;
+            }
+        }
+
+        // Single source of truth: timeupdate is the ONLY mechanism that drives progress.
+        // No RAF, no setInterval — they caused race conditions and jitter on mobile.
+        mainAudio.addEventListener('timeupdate', updateProgressUI);
+
+        mainAudio.addEventListener('seeked', () => {
+            // IMPORTANT: do NOT reset maxTimeSeen here.
+            // 'seeked' fires on internal network buffering seeks too, not just user seeks.
+            // Resetting maxTimeSeen here would lower the guard and let the slider jump back.
+            // maxTimeSeen is ONLY reset by: (1) loadTrack on track change, and
+            // (2) the user's slider change handler on an intentional seek.
+            lastDisplayedSeconds = -1;
+            updateProgressUI();
+        });
+
+        mainAudio.addEventListener('loadedmetadata', () => {
+            if (mainAudio.currentTime > 0 && mainAudio.currentTime === mainAudio.duration) {
+                mainAudio.currentTime = 0;
+            }
+            updateProgressUI();
+            updateMediaSessionPositionState();
+        });
+
+        // Keep OS Media Controls active during track transition loading & buffering
+        mainAudio.addEventListener('loadstart', () => {
+            if ('mediaSession' in navigator) {
+                try {
+                    navigator.mediaSession.playbackState = "playing";
+                    updateMediaSessionMetadata();
+                } catch (e) {}
+            }
+        });
+
+        mainAudio.addEventListener('playing', () => {
+            if ('mediaSession' in navigator) {
+                try {
+                    navigator.mediaSession.playbackState = "playing";
+                    updateMediaSessionMetadata();
+                    updateMediaSessionPositionState();
+                } catch (e) {}
+            }
+        });
+
+        mainAudio.addEventListener('waiting', () => {
+            if ('mediaSession' in navigator) {
+                try {
+                    navigator.mediaSession.playbackState = "playing";
+                } catch (e) {}
+            }
+        });
+
+        function setupSeekListener(sliderEl) {
+            if (!sliderEl) return;
+            sliderEl.addEventListener('pointerdown', () => { isSeeking = true; });
+            sliderEl.addEventListener('touchstart', () => { isSeeking = true; });
+            sliderEl.addEventListener('input', () => {
+                isSeeking = true;
+                if (mainAudio.duration) {
+                    const targetTime = (sliderEl.value / 100) * mainAudio.duration;
+                    const formattedCurrent = formatTime(targetTime);
+                    if (currentTimeEl) currentTimeEl.textContent = formattedCurrent;
+                    if (currentTimeElMobile) currentTimeElMobile.textContent = formattedCurrent;
+                }
+            });
+            sliderEl.addEventListener('change', () => {
+                if (mainAudio.duration) {
+                    mainAudio.currentTime = (sliderEl.value / 100) * mainAudio.duration;
+                    maxTimeSeen = mainAudio.currentTime;
+                    lastDisplayedSeconds = -1;
+                }
+                isSeeking = false;
+                updateProgressUI();
+                updateMediaSessionPositionState();
+            });
+            sliderEl.addEventListener('pointerup', () => { isSeeking = false; });
+            sliderEl.addEventListener('touchend', () => { isSeeking = false; });
+        }
+
+        setupSeekListener(progressBar);
+        setupSeekListener(progressBarMobile);
+
+        // 3. Volume Control & Mute Logic (Desktop Inline & Mobile Popover)
+        let lastVolume = 1;
+        const volumePopover = document.getElementById('volume-popover');
+        const volumeSliderMobile = document.getElementById('volume-slider-mobile');
+        const volumePctLabel = document.getElementById('volume-pct-label');
+        const volumePctDesktop = document.getElementById('volume-pct-desktop');
+
+        function updateMuteIcon() {
+            const vol = mainAudio.volume;
+            let emoji = '🔊';
+            if (vol === 0) {
+                emoji = '🔇';
+            } else if (vol < 0.5) {
+                emoji = '🔉';
+            }
+            // Update only desktop text icon without modifying mobile img tag
+            const desktopSpan = muteBtn ? muteBtn.querySelector('span.hidden.md\\:inline') : null;
+            if (desktopSpan) {
+                desktopSpan.textContent = emoji;
+            }
+            const pctStr = Math.round(vol * 100) + '%';
+            if (volumePctLabel) {
+                volumePctLabel.textContent = pctStr;
+            }
+            if (volumePctDesktop) {
+                volumePctDesktop.textContent = pctStr;
+            }
+        }
+
+        function syncVolume(val) {
+            mainAudio.volume = val;
+            if (volumeSlider) volumeSlider.value = val;
+            if (volumeSliderMobile) volumeSliderMobile.value = val;
+            if (val > 0) lastVolume = val;
+            updateMuteIcon();
+        }
+
+        if (volumeSlider) {
+            volumeSlider.addEventListener('input', () => syncVolume(volumeSlider.value));
+        }
+
+        if (volumeSliderMobile) {
+            volumeSliderMobile.addEventListener('input', () => syncVolume(volumeSliderMobile.value));
+        }
+
+        if (muteBtn) {
+            muteBtn.addEventListener('click', (e) => {
+                if (window.innerWidth < 768) {
+                    e.stopPropagation();
+                    if (volumePopover) {
+                        volumePopover.classList.toggle('hidden');
+                    }
+                } else {
+                    if (mainAudio.volume > 0) {
+                        syncVolume(0);
+                    } else {
+                        syncVolume(lastVolume || 1);
+                    }
+                }
+            });
+        }
+
+        document.addEventListener('click', (e) => {
+            if (volumePopover && !volumePopover.classList.contains('hidden')) {
+                if (!volumePopover.contains(e.target) && !muteBtn.contains(e.target)) {
+                    volumePopover.classList.add('hidden');
+                }
+            }
+        });
+
+        // Load initial track details
+        loadTrack(0);
+
+        // 4. Realtime WebSocket Presence & Shared WAH Server Connection
+        const mySessionId = 'listener_' + Math.random().toString(36).substring(2, 9);
+        const onlineCountEl = document.getElementById('online-count');
+        const clapCounter = document.getElementById('clap-counter');
+        const wahBtn = document.getElementById('wah-btn');
+
+        function spawnFloatingWah(containerEl) {
+            const target = containerEl || (window.innerWidth < 768 ? wahBtnMobile : wahBtn);
+            if (!target) return;
+            const emoji = document.createElement('div');
+            emoji.className = 'floating-wah';
+            emoji.textContent = '👏';
+            
+            // Subtle organic horizontal drift
+            const offset = (Math.random() - 0.5) * 35;
+            emoji.style.left = `calc(50% + ${offset}px)`;
+            emoji.style.top = '10px';
+            
+            target.appendChild(emoji);
+            setTimeout(() => emoji.remove(), 1200);
+        }
+
+        function updateWahUI(count, animate = false, sourceEl = null) {
+            if (count === undefined || count === null) return;
+            const formatted = Number(count).toLocaleString();
+            if (clapCounter) clapCounter.textContent = formatted;
+            if (clapCounterMobile) clapCounterMobile.textContent = formatted;
+            
+            if (animate) {
+                if (wahBtn) {
+                    wahBtn.classList.add('wah-button-active');
+                    setTimeout(() => wahBtn.classList.remove('wah-button-active'), 150);
+                }
+                if (wahBtnMobile) {
+                    wahBtnMobile.classList.add('wah-button-active');
+                    setTimeout(() => wahBtnMobile.classList.remove('wah-button-active'), 150);
+                }
+                spawnFloatingWah(sourceEl);
+            }
+        }
+
+        let presenceWs = null;
+        let lastWahClickTimestamp = 0;
+
+        function handleWahClick(e) {
+            if (e) {
+                e.stopPropagation();
+                e.preventDefault();
+            }
+
+            // 150ms Debounce to prevent duplicate touch/click handlers on single physical tap
+            const now = Date.now();
+            if (now - lastWahClickTimestamp < 150) return;
+            lastWahClickTimestamp = now;
+
+            // Send atomic increment request to server (Do NOT mutate local state directly!)
+            if (presenceWs && presenceWs.readyState === WebSocket.OPEN) {
+                presenceWs.send(JSON.stringify({ type: 'INCREMENT_WAH' }));
+            }
+            
+            // Web3 integration trigger if available
+            if (typeof isWeb3Configured !== 'undefined' && isWeb3Configured && typeof window.ethereum !== 'undefined') {
+                triggerWeb3Wah();
+            }
+        }
+
+        if (wahBtn) {
+            wahBtn.addEventListener('click', handleWahClick);
+        }
+        if (wahBtnMobile) {
+            wahBtnMobile.addEventListener('click', handleWahClick);
+        }
+
+        // Realtime Cross-Device WebSocket Presence & Global WAH Synchronization
+        function initPresenceSocket() {
+            let pingTimer = null;
+            let reconnectTimer = null;
+
+            function getWsEndpoint() {
+                if (window.MEHFIL_WS_URL) return window.MEHFIL_WS_URL;
+                const host = window.location.hostname || 'localhost';
+                const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                return `${proto}//${host}:3001`;
+            }
+
+            function connect() {
+                if (presenceWs && (presenceWs.readyState === WebSocket.OPEN || presenceWs.readyState === WebSocket.CONNECTING)) {
+                    return;
+                }
+
+                try {
+                    presenceWs = new WebSocket(getWsEndpoint());
+
+                    presenceWs.onopen = () => {
+                        clearInterval(pingTimer);
+                        pingTimer = setInterval(() => {
+                            if (presenceWs && presenceWs.readyState === WebSocket.OPEN) {
+                                presenceWs.send(JSON.stringify({ type: 'PING' }));
+                            }
+                        }, 4000);
+                    };
+
+                    presenceWs.onmessage = (evt) => {
+                        try {
+                            const msg = JSON.parse(evt.data);
+                            if (msg.type === 'INIT_STATE') {
+                                if (onlineCountEl && typeof msg.presenceCount === 'number') {
+                                    onlineCountEl.textContent = `${msg.presenceCount} Online`;
+                                }
+                                if (typeof msg.wahCount === 'number') {
+                                    updateWahUI(msg.wahCount, false);
+                                }
+                            } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
+                                if (onlineCountEl) {
+                                    onlineCountEl.textContent = `${msg.count} Online`;
+                                }
+                            } else if (msg.type === 'WAH_COUNT' && typeof msg.count === 'number') {
+                                // Server broadcasted newly updated atomic global count
+                                updateWahUI(msg.count, true);
+                            }
+                        } catch(err) {}
+                    };
+
+                    presenceWs.onclose = () => {
+                        clearInterval(pingTimer);
+                        clearTimeout(reconnectTimer);
+                        reconnectTimer = setTimeout(connect, 2000);
+                    };
+
+                    presenceWs.onerror = () => {
+                        try { presenceWs.close(); } catch(e) {}
+                    };
+                } catch(err) {
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = setTimeout(connect, 2000);
+                }
+            }
+
+            connect();
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    connect();
+                }
+            });
+
+            window.addEventListener('online', connect);
+        }
+
+        initPresenceSocket();
+    </script>
+</body>
+</html>

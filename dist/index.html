@@ -23,6 +23,9 @@
         }
     </script>
     <style>
+        /* Hide fallback realtime numbers until the server sends actual state */
+        [data-realtime-hidden="true"] { color: transparent !important; }
+
         /* Global Styles & Background */
         html, body {
             width: 100%;
@@ -169,8 +172,86 @@
             transition: none !important;
         }
     </style>
+  <script type="module" crossorigin src="/assets/index-1qyFXm-r.js"></script>
 </head>
 <body class="font-sans relative">
+    <script>
+      // Early WS preconnect to eliminate startup delay for Wah/Online
+      (function(){
+        try {
+          if (window.__mehfil_presence_manager && window.__mehfil_presence_manager.ws) return; // already preconnected
+          // Create minimal manager
+          const mgr = {
+            ws: null,
+            connecting: false,
+            shouldReconnect: true,
+            reconnectTimer: null,
+            pingTimer: null,
+            backoffMs: 2000,
+            pendingWahs: 0
+          };
+
+          function chooseUrl(){
+            if (window.MEHFIL_WS_URL && window.MEHFIL_WS_URL.length) return window.MEHFIL_WS_URL;
+            const host = window.location.hostname || 'localhost';
+            const isLocal = (host === 'localhost' || host === '127.0.0.1' || host === '');
+            if (!isLocal) return 'wss://mehfil-e-ghazal.onrender.com';
+            const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            return `${proto}//${host}:3001`;
+          }
+
+          function attachHandlers(ws){
+            ws.addEventListener('open', function(){
+              console.info('[MEHFIL WS] Early Connected');
+              // heartbeat
+              if (mgr.pingTimer) clearInterval(mgr.pingTimer);
+              mgr.pingTimer = setInterval(()=>{ try{ if(mgr.ws && mgr.ws.readyState===WebSocket.OPEN) mgr.ws.send(JSON.stringify({type:'PING'})); }catch(e){} }, 4000);
+              // send queued wahs
+              if (mgr.pendingWahs>0){ const q=mgr.pendingWahs; mgr.pendingWahs=0; for(let i=0;i<q;i++){ try{ mgr.ws.send(JSON.stringify({type:'INCREMENT_WAH'})); console.info('[MEHFIL WS] Wah sent (queued)'); }catch(e){ console.warn('[MEHFIL WS] queued send failed',e); } } }
+            });
+            ws.addEventListener('message', function(evt){
+              try{
+                const msg = JSON.parse(evt.data);
+                console.info('[MEHFIL WS] Early Message', msg.type, msg);
+                if (msg.type==='INIT_STATE'){
+                  const onlineEl = document.getElementById('online-count');
+                  const clapEl = document.getElementById('clap-counter');
+                  if (onlineEl && typeof msg.presenceCount==='number') onlineEl.textContent = `${msg.presenceCount} Online`;
+                  if (clapEl && typeof msg.wahCount==='number') clapEl.textContent = Number(msg.wahCount).toLocaleString();
+                } else if (msg.type==='PRESENCE_COUNT' && typeof msg.count==='number'){
+                  const onlineEl = document.getElementById('online-count'); if(onlineEl) onlineEl.textContent = `${msg.count} Online`;
+                } else if (msg.type==='WAH_COUNT' && typeof msg.count==='number'){
+                  const clapEl = document.getElementById('clap-counter'); if(clapEl) clapEl.textContent = Number(msg.count).toLocaleString();
+                }
+              }catch(e){console.warn('[MEHFIL WS] Early message parse',e);}
+            });
+            ws.addEventListener('close', function(){ console.info('[MEHFIL WS] Early closed'); if (mgr.pingTimer){ clearInterval(mgr.pingTimer); mgr.pingTimer=null;} mgr.ws=null; if (mgr.shouldReconnect){ if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer); mgr.reconnectTimer = setTimeout(()=>{ mgr.backoffMs = Math.min(30000, mgr.backoffMs*2); preconnect(); }, mgr.backoffMs); } });
+            ws.addEventListener('error', function(e){ console.warn('[MEHFIL WS] Early error', e && e.message); try{ if(mgr.ws) mgr.ws.close(); }catch(e){} });
+          }
+
+          function preconnect(){
+            if (!mgr.shouldReconnect) return;
+            if (mgr.ws && (mgr.ws.readyState===WebSocket.OPEN || mgr.ws.readyState===WebSocket.CONNECTING)) return;
+            mgr.connecting=true;
+            try{
+              const url = chooseUrl();
+              console.info('[MEHFIL WS] Early URL', url);
+              const ws = new WebSocket(url);
+              mgr.ws = ws;
+              attachHandlers(ws);
+            }catch(e){ console.warn('[MEHFIL WS] Early connect failed', e); mgr.connecting=false; if (mgr.shouldReconnect){ if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer); mgr.reconnectTimer = setTimeout(preconnect, mgr.backoffMs); mgr.backoffMs = Math.min(30000, mgr.backoffMs*2); } }
+          }
+
+          // expose manager so later initPresenceSocket will reuse it
+          window.__mehfil_presence_manager = mgr;
+          // start immediately
+          preconnect();
+
+          // expose a safe send function for wah (used later when handlers are attached)
+          window.__mehfil_presence_sendWah = function(){ if (mgr.ws && mgr.ws.readyState===WebSocket.OPEN){ try{ mgr.ws.send(JSON.stringify({type:'INCREMENT_WAH'})); console.info('[MEHFIL WS] Wah sent early'); }catch(e){ console.warn('[MEHFIL WS] Wah send early failed',e);} } else { mgr.pendingWahs = (mgr.pendingWahs||0)+1; console.info('[MEHFIL WS] Wah queued early'); preconnect(); } };
+        }catch(e){console.warn('[MEHFIL WS] early preconnect setup failed', e);} 
+      })();
+    </script>
 
     <!-- 1. Background Layers for Smooth Cinematic Crossfade -->
     <div id="bg-container" class="fixed inset-0 w-full h-full min-h-[100dvh] z-0 overflow-hidden pointer-events-none">
@@ -203,7 +284,7 @@
             document.getElementById('bg-layer-base').src = initialSrc;
             document.getElementById('bg-layer-overlay').src = initialSrc;
         })();
-    </script>
+    </script>
 
     <!-- 2. Top Navigation Bar -->
     <nav class="fixed top-0 left-0 w-full px-3 py-2.5 sm:px-6 sm:py-4 flex flex-wrap md:flex-nowrap justify-between items-center gap-2 z-20 pt-[max(10px,env(safe-area-inset-top))]">
@@ -216,7 +297,7 @@
         <div class="flex items-center gap-1.5 sm:gap-3 flex-wrap">
             <div class="glass-pill px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-full flex items-center gap-1.5">
                 <div class="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-green-400 rounded-full glowing-dot"></div>
-                <span class="text-[11px] sm:text-xs md:text-sm tracking-wide opacity-90" id="online-count">1 Online</span>
+                <span class="text-[11px] sm:text-xs md:text-sm tracking-wide opacity-90" id="online-count" data-realtime-hidden="true">—</span>
             </div>
 
             <!-- Manual & Auto Theme Selector -->
@@ -235,7 +316,7 @@
                 <span class="hidden sm:inline">Spotify</span>
             </a>
             <a id="yt-link" href="https://music.youtube.com" target="_blank" rel="noopener noreferrer" title="Search on YouTube Music" class="glass-pill px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-full flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/15 transition-all border border-white/10 shadow-sm">
-                <img src="/assets/YTMicon-D-byjoy3.jpeg" alt="YT Music" class="w-3.5 h-3.5 sm:w-4 sm:h-4 object-contain rounded-full" />
+                <img src="./assets/icons/YTMicon.jpeg" alt="YT Music" class="w-3.5 h-3.5 sm:w-4 sm:h-4 object-contain rounded-full" />
                 <span class="hidden sm:inline">YT Music</span>
             </a>
         </div>
@@ -264,7 +345,7 @@
                 <div class="flex items-center gap-2.5 sm:gap-4 w-full md:w-auto flex-1 min-w-0">
                     <!-- Left: Cover Image (Vinyl / CD Record) -->
                     <div id="record-container" class="relative w-12 h-12 sm:w-16 sm:h-16 md:w-24 md:h-24 rounded-full overflow-hidden flex items-center justify-center shrink-0 border border-white/30 shadow-md">
-                        <img id="track-cover" src="/assets/hoshwalon-ko-khabar-kya-Ccxu6ls0.jpg" alt="Cover" class="w-full h-full object-cover" />
+                        <img id="track-cover" src="./assets/covers/hoshwalon-ko-khabar-kya.jpg" alt="Cover" class="w-full h-full object-cover" />
                         <div id="record-hole" class="absolute w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 md:w-5 md:h-5 bg-[#111] rounded-full border border-white/30 z-10 pointer-events-none"></div>
                     </div>
                     
@@ -284,7 +365,7 @@
                     <!-- Mobile Wah! Button inside Top Row -->
                     <button class="md:hidden glass-card rounded-xl px-2.5 py-1.5 flex items-center gap-1 shrink-0 cursor-pointer group active:scale-95 transition-transform" id="wah-btn-mobile">
                         <span class="text-base">👏</span>
-                        <span class="font-serif font-bold text-amber-50 text-xs" id="clap-counter-mobile">1,234</span>
+                        <span class="font-serif font-bold text-amber-50 text-xs" id="clap-counter-mobile" data-realtime-hidden="true">—</span>
                     </button>
                 </div>
 
@@ -309,7 +390,7 @@
                     <!-- Volume Controls -->
                     <div class="relative flex items-center justify-center border-l border-white/15 pl-2.5 md:pl-4 ml-0.5 md:ml-1 md:gap-2.5 w-[50px] md:w-auto">
                         <button id="mute-btn" class="w-9 h-9 md:w-auto md:h-auto rounded-full bg-white md:bg-transparent text-black md:text-white/70 flex items-center justify-center shadow-md md:shadow-none text-base md:text-2xl transition active:scale-95 touch-none" title="Volume Controls">
-                            <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAYGBgYHBgcICAcKCwoLCg8ODAwODxYQERAREBYiFRkVFRkVIh4kHhweJB42KiYmKjY+NDI0PkxERExfWl98fKcBBgYGBgcGBwgIBwoLCgsKDw4MDA4PFhAREBEQFiIVGRUVGRUiHiQeHB4kHjYqJiYqNj40MjQ+TERETF9aX3x8p//CABEIAFgAWAMBIgACEQEDEQH/xAAtAAEAAQUBAAAAAAAAAAAAAAAABwEDBAUGAgEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEAMQAAAC5QAABWgAAAe/ZZycjtyxxUjR4YAAFaVJGy7V0AR/IEfGw57f6gxwK0EmXo/yjtnK9Qeo/kCPzb8vQAAANvqBJnC2Mc8AAAAAAAA//8QAAv/aAAwDAQACAAMAAAAhAAEMAAEAgUMAAJBB0wEgNV8AAA04AAAAAAAA/8QAAv/aAAwDAQACAAMAAAAQ884w8848B9w8sMc8sM4Z8g4888sF88888888/8QAFBEBAAAAAAAAAAAAAAAAAAAAUP/aAAgBAgEBPwAT/8QAGBEAAwEBAAAAAAAAAAAAAAAAAREgMBD/2gAIAQMBAT8AxIow+Gnj/8QAMxAAAQMBBAUKBwEAAAAAAAAAAQIDBAAFERIxIDA1UXIQExQVISJBQnGRBjIzNEBSU2L/2gAIAQEAAT8C/BAJyGqjRXZLgQ2Kg2czERleo5mrQQETX0jLFpJbWr5Uk10d/wDkr2qJZsiS5hwlI8SaiRGYreBA9Tv5LU+/kcWlCjtsx20pHlF+jaV3WL1+WOn7MjOx+fhrvuHanQGdM/Rb4Ro2rtCRxV8PrX0tSPKU9tSwEyXgMsZ5RUcgsNEfqNG1dov8VIVEsuMSlwLeWmlEkknx0I1qy46MCFd3ca6/nf49qhW8ouYZAFx8RSVBQBBvHJa20H/XU2dajkU4Vd5vdupl5t9sLbVeDVrbQf8AXVRpsiMTzS7qWtTi1LUbyc9f/8QAJhAAAgECBAUFAAAAAAAAAAAAAREAIDEhMEFxEEBRscGBkaHw8f/aAAgBAQABPyHkSyIdsp1Um50G8UQF9+IKVAaFXwbBz9FBVJtkoE92FWoxIgvYZC1JNPv82j2xxq9FjefT9Kg6gNZZrI43CFQYPbpBgjDPOWkK0yTPrQrE6ANcA6KS0oCsQMEZdj7iX8EHEmXKJ8xFxcR8Jss//8QAJRABAAIABQQBBQAAAAAAAAAAAQARECAhUWEwMUFxoUCBkbHw/9oACAEBAAE/EPobUGroLERROikN3A7qDScVu/EBzoxmZSp73/pgMEXgpgz2qv7xwEVZDQ3ZoM4XRBVZRtKxFO2nJZe4+5RFMfjp/W25TCQKs8OUpfyxoM9hIPulJ6ZRsgswjuuMyx0rbqtyDg7xWWaNNUD1IQ5LWI4fAy84xRWtXvykZMaJ44Y163RGI0B1y2MQRb5Xr//Z" alt="Volume" class="w-5 h-5 object-contain rounded-full md:hidden" />
+                            <img src="./assets/icons/phone volume icon.jpeg" alt="Volume" class="w-5 h-5 object-contain rounded-full md:hidden" />
                             <span class="hidden md:inline">🔊</span>
                         </button>
                         <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1" class="w-24 lg:w-28 h-2 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white hidden md:block" title="Volume" />
@@ -331,7 +412,7 @@
             <div class="hidden md:flex flex-1 justify-end">
                 <!-- Bottom-Right: The "Wah!" Interactive Button -->
                 <button class="glass-card rounded-2xl p-4 w-[110px] h-[110px] flex flex-col items-center justify-center relative cursor-pointer group" id="wah-btn">
-                    <span class="absolute top-2 right-3 text-[10px] font-bold text-amber-200/90" id="clap-counter">1,234</span>
+                    <span class="absolute top-2 right-3 text-[10px] font-bold text-amber-200/90" id="clap-counter" data-realtime-hidden="true">—</span>
                     <div class="text-3xl mb-1 group-hover:-translate-y-1 transition-transform">👏</div>
                     <span class="font-serif font-bold text-amber-50">Wah!</span>
                 </button>
@@ -1317,13 +1398,18 @@
 
             // Send atomic increment request to server (Do NOT mutate local state directly!)
             if (presenceWs && presenceWs.readyState === WebSocket.OPEN) {
+            try {
+                console.log('[WS] WAH SENT');
                 presenceWs.send(JSON.stringify({ type: 'INCREMENT_WAH' }));
+            } catch (err) { console.warn('[WS] WAH SEND ERROR', err); }
+        } else {
+            console.warn('[WS] WAH not sent - socket not open');
             }
             
-            // Web3 integration trigger if available
-            if (typeof isWeb3Configured !== 'undefined' && isWeb3Configured && typeof window.ethereum !== 'undefined') {
-                triggerWeb3Wah();
-            }
+        // Web3 integration trigger if available
+        if (typeof isWeb3Configured !== 'undefined' && isWeb3Configured && typeof window.ethereum !== 'undefined') {
+            triggerWeb3Wah();
+        }
         }
 
         if (wahBtn) {
@@ -1335,79 +1421,205 @@
 
         // Realtime Cross-Device WebSocket Presence & Global WAH Synchronization
         function initPresenceSocket() {
-            let pingTimer = null;
-            let reconnectTimer = null;
+            // Prevent multiple initializations if script runs twice for any reason
+            if (window.__mehfil_presence_init) return;
+            window.__mehfil_presence_init = true;
+
+            // Create a singleton manager to avoid races across reloads and DevTools quirks
+            if (!window.__mehfil_presence_manager) {
+                window.__mehfil_presence_manager = {
+                    ws: null,
+                    connecting: false,
+                    shouldReconnect: true,
+                    reconnectTimer: null,
+                    pingTimer: null,
+                    backoffMs: 2000,
+                    pendingWahs: 0
+                };
+            }
+            const mgr = window.__mehfil_presence_manager;
 
             function getWsEndpoint() {
-                if (window.MEHFIL_WS_URL) return window.MEHFIL_WS_URL;
+                // 1) Prefer explicit window override (set by ws-bridge or Vite-inlined script)
+                if (window.MEHFIL_WS_URL && window.MEHFIL_WS_URL.length) {
+                    console.info('[MEHFIL WS] Using window.MEHFIL_WS_URL', window.MEHFIL_WS_URL);
+                    return window.MEHFIL_WS_URL;
+                }
+
+                // 2) If running on production host (not localhost), default immediately to the Render service
                 const host = window.location.hostname || 'localhost';
+                const isLocal = (host === 'localhost' || host === '127.0.0.1' || host === '' );
+                if (!isLocal) {
+                    const prodUrl = 'wss://mehfil-e-ghazal.onrender.com';
+                    console.info('[MEHFIL WS] No window override; using production default', prodUrl);
+                    return prodUrl;
+                }
+
+                // 3) Development fallback
                 const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                return `${proto}//${host}:3001`;
+                const devUrl = `${proto}//${host}:3001`;
+                console.info('[MEHFIL WS] Using development fallback', devUrl);
+                return devUrl;
             }
 
             function connect() {
-                if (presenceWs && (presenceWs.readyState === WebSocket.OPEN || presenceWs.readyState === WebSocket.CONNECTING)) {
-                    return;
-                }
+                if (!mgr.shouldReconnect) return;
+                if (mgr.ws && (mgr.ws.readyState === WebSocket.OPEN || mgr.ws.readyState === WebSocket.CONNECTING)) return;
+                if (mgr.connecting) return;
+                mgr.connecting = true;
+
+                const wsUrl = getWsEndpoint();
+                console.info('[MEHFIL WS] Initializing');
+                console.info('[MEHFIL WS] URL:', wsUrl);
+                console.info('[MEHFIL WS] Connecting');
 
                 try {
-                    presenceWs = new WebSocket(getWsEndpoint());
+                    const ws = new WebSocket(wsUrl);
+                    mgr.ws = ws;
 
-                    presenceWs.onopen = () => {
-                        clearInterval(pingTimer);
-                        pingTimer = setInterval(() => {
-                            if (presenceWs && presenceWs.readyState === WebSocket.OPEN) {
-                                presenceWs.send(JSON.stringify({ type: 'PING' }));
-                            }
+                    ws.addEventListener('open', () => {
+                        console.info('[MEHFIL WS] Connected');
+                        mgr.connecting = false;
+                        mgr.backoffMs = 2000;
+
+                        if (mgr.pingTimer) clearInterval(mgr.pingTimer);
+                        mgr.pingTimer = setInterval(() => {
+                            try { if (mgr.ws && mgr.ws.readyState === WebSocket.OPEN) mgr.ws.send(JSON.stringify({ type: 'PING' })); } catch(e) {}
                         }, 4000);
-                    };
 
-                    presenceWs.onmessage = (evt) => {
+                        // Send any queued wahs (do not update UI here - server is authoritative)
+                        if (mgr.pendingWahs > 0) {
+                            const q = mgr.pendingWahs;
+                            mgr.pendingWahs = 0;
+                            for (let i = 0; i < q; i++) {
+                                try { mgr.ws.send(JSON.stringify({ type: 'INCREMENT_WAH' })); console.info('[MEHFIL WS] Wah sent (queued)'); } catch(e) { console.warn('[MEHFIL WS] queued wah send failed', e); }
+                            }
+                        }
+                    });
+
+                    ws.addEventListener('message', (evt) => {
                         try {
                             const msg = JSON.parse(evt.data);
+                            console.info('[MEHFIL WS] Message received:', msg.type, msg);
+
+                            // Reveal realtime UI elements on first authoritative server message
+                            function revealRealtimeOnce() {
+                                try {
+                                    if (!window.__mehfil_first_state_received) {
+                                        window.__mehfil_first_state_received = true;
+                                        const c1 = document.getElementById('online-count'); if (c1) c1.removeAttribute('data-realtime-hidden');
+                                        const c2 = document.getElementById('clap-counter'); if (c2) c2.removeAttribute('data-realtime-hidden');
+                                        const c3 = document.getElementById('clap-counter-mobile'); if (c3) c3.removeAttribute('data-realtime-hidden');
+                                    }
+                                } catch(e) { console.warn('[MEHFIL WS] revealRealtimeOnce failed', e); }
+                            }
+
                             if (msg.type === 'INIT_STATE') {
-                                if (onlineCountEl && typeof msg.presenceCount === 'number') {
-                                    onlineCountEl.textContent = `${msg.presenceCount} Online`;
-                                }
-                                if (typeof msg.wahCount === 'number') {
-                                    updateWahUI(msg.wahCount, false);
-                                }
+                                revealRealtimeOnce();
+                                if (onlineCountEl && typeof msg.presenceCount === 'number') onlineCountEl.textContent = `${msg.presenceCount} Online`;
+                                if (typeof msg.wahCount === 'number') updateWahUI(msg.wahCount, false);
                             } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
-                                if (onlineCountEl) {
-                                    onlineCountEl.textContent = `${msg.count} Online`;
-                                }
+                                revealRealtimeOnce();
+                                if (onlineCountEl) onlineCountEl.textContent = `${msg.count} Online`;
                             } else if (msg.type === 'WAH_COUNT' && typeof msg.count === 'number') {
-                                // Server broadcasted newly updated atomic global count
+                                revealRealtimeOnce();
                                 updateWahUI(msg.count, true);
                             }
-                        } catch(err) {}
-                    };
+                        } catch (e) { console.warn('[MEHFIL WS] Message parse error', e); }
+                    });
 
-                    presenceWs.onclose = () => {
-                        clearInterval(pingTimer);
-                        clearTimeout(reconnectTimer);
-                        reconnectTimer = setTimeout(connect, 2000);
-                    };
+                    ws.addEventListener('close', () => {
+                        console.info('[MEHFIL WS] Connection closed');
+                        mgr.connecting = false;
+                        if (mgr.pingTimer) { clearInterval(mgr.pingTimer); mgr.pingTimer = null; }
+                        if (mgr.ws) { try { mgr.ws.close(); } catch(e) {} }
+                        mgr.ws = null;
 
-                    presenceWs.onerror = () => {
-                        try { presenceWs.close(); } catch(e) {}
-                    };
-                } catch(err) {
-                    clearTimeout(reconnectTimer);
-                    reconnectTimer = setTimeout(connect, 2000);
+                        if (mgr.shouldReconnect) {
+                            console.info('[MEHFIL WS] Reconnecting in', mgr.backoffMs, 'ms');
+                            if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
+                            mgr.reconnectTimer = setTimeout(() => { mgr.backoffMs = Math.min(30000, mgr.backoffMs * 2); connect(); }, mgr.backoffMs);
+                        }
+                    });
+
+                    ws.addEventListener('error', (err) => {
+                        console.warn('[MEHFIL WS] Error', err && err.message);
+                        try { if (mgr.ws) mgr.ws.close(); } catch(e) {}
+                    });
+
+                } catch (e) {
+                    console.warn('[MEHFIL WS] Connect exception', e && e.message);
+                    mgr.connecting = false;
+                    if (mgr.shouldReconnect) {
+                        if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
+                        mgr.reconnectTimer = setTimeout(connect, mgr.backoffMs);
+                        mgr.backoffMs = Math.min(30000, mgr.backoffMs * 2);
+                    }
                 }
             }
 
-            connect();
-
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible') {
+            function sendWah() {
+                if (mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
+                    try { mgr.ws.send(JSON.stringify({ type: 'INCREMENT_WAH' })); console.info('[MEHFIL WS] Wah sent'); } catch(e) { console.warn('[MEHFIL WS] Wah send failed', e); }
+                } else {
+                    mgr.pendingWahs = (mgr.pendingWahs || 0) + 1;
+                    console.info('[MEHFIL WS] Wah queued (socket not open)');
                     connect();
                 }
-            });
+            }
 
-            window.addEventListener('online', connect);
+            // Replace the existing handleWahClick implementation to use sendWah safely
+            const _origHandleWah = handleWahClick;
+            window.__mehfil_presence_orig_handleWah = _origHandleWah;
+            handleWahClick = function(e) {
+                if (e) { e.stopPropagation(); e.preventDefault(); }
+                const now = Date.now();
+                if (now - lastWahClickTimestamp < 150) return;
+                lastWahClickTimestamp = now;
+                sendWah();
+                if (typeof isWeb3Configured !== 'undefined' && isWeb3Configured && typeof window.ethereum !== 'undefined') {
+                    triggerWeb3Wah();
+                }
+            };
+
+            try {
+                if (wahBtn) { wahBtn.removeEventListener('click', window.__mehfil_presence_orig_handleWah); wahBtn.removeEventListener('click', handleWahClick); wahBtn.addEventListener('click', handleWahClick); }
+                if (wahBtnMobile) { wahBtnMobile.removeEventListener('click', window.__mehfil_presence_orig_handleWah); wahBtnMobile.removeEventListener('click', handleWahClick); wahBtnMobile.addEventListener('click', handleWahClick); }
+            } catch (e) { console.warn('[MEHFIL WS] attach wah handlers failed', e); }
+
+            (async () => {
+                // Start connection immediately using inlined env or window fallback. Do not block on probing.
+                if (window.MEHFIL_WS_URL && window.MEHFIL_WS_URL.length) {
+                    console.info('[MEHFIL WS] Using window.MEHFIL_WS_URL preconfigured:', window.MEHFIL_WS_URL);
+                } else {
+                    console.info('[MEHFIL WS] No window.MEHFIL_WS_URL preconfigured; attempting immediate connect using getWsEndpoint() (dev fallback if necessary)');
+                }
+
+                // Start connection immediately
+                connect();
+
+                document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') connect(); });
+                window.addEventListener('online', connect);
+
+                window.addEventListener('beforeunload', () => {
+                    mgr.shouldReconnect = false;
+                    if (mgr.pingTimer) clearInterval(mgr.pingTimer);
+                    if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
+                    try { if (mgr.ws) mgr.ws.close(); } catch (e) {}
+                });
+            })();
         }
+
+        // Ensure Wah click handler is attached exactly once
+        (function attachWahHandlers() {
+            try {
+                // Remove previous handlers if any (safe no-op)
+                if (wahBtn) wahBtn.removeEventListener('click', handleWahClick);
+                if (wahBtnMobile) wahBtnMobile.removeEventListener('click', handleWahClick);
+                if (wahBtn) wahBtn.addEventListener('click', (e) => { console.log('[WS] Wah click'); handleWahClick(e); });
+                if (wahBtnMobile) wahBtnMobile.addEventListener('click', (e) => { console.log('[WS] Wah click (mobile)'); handleWahClick(e); });
+            } catch (e) { console.warn('Error attaching wah handlers', e); }
+        })();
 
         initPresenceSocket();
     </script>

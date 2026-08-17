@@ -23,6 +23,9 @@
         }
     </script>
     <style>
+        /* Hide fallback realtime numbers until the server sends actual state */
+        [data-realtime-hidden="true"] { color: transparent !important; }
+
         /* Global Styles & Background */
         html, body {
             width: 100%;
@@ -308,7 +311,7 @@
         <div class="flex items-center gap-1.5 sm:gap-3 flex-wrap">
             <div class="glass-pill px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-full flex items-center gap-1.5">
                 <div class="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-green-400 rounded-full glowing-dot"></div>
-                <span class="text-[11px] sm:text-xs md:text-sm tracking-wide opacity-90" id="online-count">—</span>
+                <span class="text-[11px] sm:text-xs md:text-sm tracking-wide opacity-90" id="online-count" data-realtime-hidden="true">—</span>
             </div>
 
             <!-- Manual & Auto Theme Selector -->
@@ -376,7 +379,7 @@
                     <!-- Mobile Wah! Button inside Top Row -->
                     <button class="md:hidden glass-card rounded-xl px-2.5 py-1.5 flex items-center gap-1 shrink-0 cursor-pointer group active:scale-95 transition-transform" id="wah-btn-mobile">
                         <span class="text-base">👏</span>
-                        <span class="font-serif font-bold text-amber-50 text-xs" id="clap-counter-mobile">—</span>
+                        <span class="font-serif font-bold text-amber-50 text-xs" id="clap-counter-mobile" data-realtime-hidden="true">—</span>
                     </button>
                 </div>
 
@@ -423,7 +426,7 @@
             <div class="hidden md:flex flex-1 justify-end">
                 <!-- Bottom-Right: The "Wah!" Interactive Button -->
                 <button class="glass-card rounded-2xl p-4 w-[110px] h-[110px] flex flex-col items-center justify-center relative cursor-pointer group" id="wah-btn">
-                    <span class="absolute top-2 right-3 text-[10px] font-bold text-amber-200/90" id="clap-counter">—</span>
+                    <span class="absolute top-2 right-3 text-[10px] font-bold text-amber-200/90" id="clap-counter" data-realtime-hidden="true">—</span>
                     <div class="text-3xl mb-1 group-hover:-translate-y-1 transition-transform">👏</div>
                     <span class="font-serif font-bold text-amber-50">Wah!</span>
                 </button>
@@ -1512,12 +1515,28 @@
                         try {
                             const msg = JSON.parse(evt.data);
                             console.info('[MEHFIL WS] Message received:', msg.type, msg);
+
+                            // Reveal realtime UI elements on first authoritative server message
+                            function revealRealtimeOnce() {
+                                try {
+                                    if (!window.__mehfil_first_state_received) {
+                                        window.__mehfil_first_state_received = true;
+                                        const c1 = document.getElementById('online-count'); if (c1) c1.removeAttribute('data-realtime-hidden');
+                                        const c2 = document.getElementById('clap-counter'); if (c2) c2.removeAttribute('data-realtime-hidden');
+                                        const c3 = document.getElementById('clap-counter-mobile'); if (c3) c3.removeAttribute('data-realtime-hidden');
+                                    }
+                                } catch(e) { console.warn('[MEHFIL WS] revealRealtimeOnce failed', e); }
+                            }
+
                             if (msg.type === 'INIT_STATE') {
+                                revealRealtimeOnce();
                                 if (onlineCountEl && typeof msg.presenceCount === 'number') onlineCountEl.textContent = `${msg.presenceCount} Online`;
                                 if (typeof msg.wahCount === 'number') updateWahUI(msg.wahCount, false);
                             } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
+                                revealRealtimeOnce();
                                 if (onlineCountEl) onlineCountEl.textContent = `${msg.count} Online`;
                             } else if (msg.type === 'WAH_COUNT' && typeof msg.count === 'number') {
+                                revealRealtimeOnce();
                                 updateWahUI(msg.count, true);
                             }
                         } catch (e) { console.warn('[MEHFIL WS] Message parse error', e); }

@@ -2,7 +2,7 @@ import { WebSocketServer } from 'ws';
 import http from 'http';
 import fs from 'fs';
 
-const PORT = 3001;
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 const WAH_FILE = './wah_count.json';
 
 // Global Atomic WAH Counter (Persisted to disk)

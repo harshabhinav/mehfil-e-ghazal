@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 
 const WahButton = () => {
-  const [claps, setClaps] = useState(1234);
+  const [claps, setClaps] = useState(null);
   const [isAnimating, setIsAnimating] = useState(false);
 
   const handleClap = () => {
-    setClaps(prev => prev + 1);
+    setClaps(prev => (typeof prev === 'number' ? prev + 1 : 1));
     setIsAnimating(true);
     setTimeout(() => setIsAnimating(false), 300);
   };
@@ -15,7 +15,7 @@ const WahButton = () => {
       <div className="wah-icon">👏</div>
       <div className="wah-text">
         <span className="wah-hindi hindi-text">वाह!</span>
-        <span className="wah-count">{claps.toLocaleString()} claps</span>
+        <span className="wah-count">{claps !== null ? `${claps.toLocaleString()} claps` : '--'}</span>
       </div>
     </button>
   );

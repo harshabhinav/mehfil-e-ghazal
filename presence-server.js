@@ -6,7 +6,7 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 const WAH_FILE = './wah_count.json';
 
 // Global Atomic WAH Counter (Persisted to disk)
-let globalWahCount = 1234;
+let globalWahCount = 0;
 try {
     if (fs.existsSync(WAH_FILE)) {
         const saved = JSON.parse(fs.readFileSync(WAH_FILE, 'utf8'));
@@ -80,10 +80,29 @@ setInterval(() => {
     }
 }, 5000);
 
-wss.on('connection', (ws) => {
-    const connectionId = 'conn_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
-    clients.set(connectionId, { ws, lastPing: Date.now(), id: connectionId });
-    console.log(`[WS] Client connected: ${connectionId}. Online: ${clients.size}`);
+wss.on('connection', (ws, req) => {
+    let sessionId = null;
+    try {
+        if (req && req.url) {
+            const urlObj = new URL(req.url, 'http://localhost');
+            sessionId = urlObj.searchParams.get('sessionId');
+        }
+    } catch (e) {}
+
+    if (!sessionId) {
+        sessionId = 'conn_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+    }
+
+    // Replace old socket if this sessionId reconnected/refreshed
+    const existing = clients.get(sessionId);
+    if (existing && existing.ws) {
+        try {
+            existing.ws.terminate();
+        } catch (e) {}
+    }
+
+    clients.set(sessionId, { ws, lastPing: Date.now(), id: sessionId });
+    console.log(`[WS] Client connected: ${sessionId}. Online: ${clients.size}`);
 
     // Send current initial state (presence + shared global WAH count) to new client
     try {
@@ -101,18 +120,18 @@ wss.on('connection', (ws) => {
         try {
             const data = JSON.parse(message.toString());
             if (data.type === 'PING') {
-                const client = clients.get(connectionId);
-                if (client) client.lastPing = Date.now();
+                const client = clients.get(sessionId);
+                if (client && client.ws === ws) client.lastPing = Date.now();
                 if (ws.readyState === 1) {
                     ws.send(JSON.stringify({ type: 'PONG' }));
                 }
             } else if (data.type === 'INCREMENT_WAH') {
-                console.log('[WS] Wah received from', connectionId);
+                console.log('[WS] Wah received from', sessionId);
                 // Atomic Server Increment
                 globalWahCount += 1;
                 try { saveWahCount(); } catch(e) { console.warn('[WS] saveWahCount failed', e); }
                 console.log('[WS] Wah count:', globalWahCount, ' Broadcasting to', clients.size, 'clients');
-                broadcastWahCount(connectionId);
+                broadcastWahCount(sessionId);
             } else {
                 // Unknown message type - ignore
             }
@@ -120,20 +139,26 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('pong', () => {
-        const client = clients.get(connectionId);
-        if (client) client.lastPing = Date.now();
+        const client = clients.get(sessionId);
+        if (client && client.ws === ws) client.lastPing = Date.now();
     });
 
     ws.on('close', () => {
-        clients.delete(connectionId);
-        console.log(`[WS] Client disconnected: ${connectionId}. Online: ${clients.size}`);
-        broadcastPresence();
+        const current = clients.get(sessionId);
+        if (current && current.ws === ws) {
+            clients.delete(sessionId);
+            console.log(`[WS] Client disconnected: ${sessionId}. Online: ${clients.size}`);
+            broadcastPresence();
+        }
     });
 
     ws.on('error', (err) => {
-        clients.delete(connectionId);
-        console.warn(`[WS] Client error: ${connectionId}`, err);
-        broadcastPresence();
+        const current = clients.get(sessionId);
+        if (current && current.ws === ws) {
+            clients.delete(sessionId);
+            console.warn(`[WS] Client error: ${sessionId}`, err);
+            broadcastPresence();
+        }
     });
 });
 

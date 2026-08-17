@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 const TopNav = () => {
   const [time, setTime] = useState('');
-  const [onlineCount] = useState(Math.floor(Math.random() * (50 - 20 + 1) + 20));
+  const [onlineCount] = useState(null);
 
   useEffect(() => {
     const updateClock = () => {
@@ -32,7 +32,7 @@ const TopNav = () => {
       
       <div className="online-status glass-panel">
         <div className="status-dot"></div>
-        <span className="hindi-text">{onlineCount} ऑनलाइन</span>
+        <span className="hindi-text">{onlineCount !== null ? `${onlineCount} ऑनलाइन` : '-- ऑनलाइन'}</span>
       </div>
       
       <div className="nav-links hindi-text">

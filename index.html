@@ -204,7 +204,21 @@
             document.getElementById('bg-layer-overlay').src = initialSrc;
         })();
     </script>
-    <script type="module" src="/src/ws-bridge.js"></script>
+    <script type="module">
+      // Inline bridge: set window.MEHFIL_WS_URL at parse time so the presence socket can connect immediately
+      try {
+        const envWs = import.meta.env.VITE_MEHFIL_WS_URL;
+        if (envWs && typeof envWs === 'string' && envWs.length) {
+          window.MEHFIL_WS_URL = envWs;
+          console.info('[MEHFIL WS] VITE_MEHFIL_WS_URL inlined', window.MEHFIL_WS_URL);
+        } else {
+          console.info('[MEHFIL WS] No VITE_MEHFIL_WS_URL available at build time');
+        }
+      } catch (e) {
+        // import.meta.env only available in module contexts; ignore silently if not accessible
+        console.info('[MEHFIL WS] import.meta.env access failed', e && e.message);
+      }
+    </script>
 
     <!-- 2. Top Navigation Bar -->
     <nav class="fixed top-0 left-0 w-full px-3 py-2.5 sm:px-6 sm:py-4 flex flex-wrap md:flex-nowrap justify-between items-center gap-2 z-20 pt-[max(10px,env(safe-area-inset-top))]">
@@ -1483,26 +1497,14 @@
             } catch (e) { console.warn('[MEHFIL WS] attach wah handlers failed', e); }
 
             (async () => {
-                // If window.MEHFIL_WS_URL is not set (build env missing), probe Render health endpoint to derive it at runtime
-                if (!window.MEHFIL_WS_URL || !window.MEHFIL_WS_URL.length) {
-                    try {
-                        const controller = new AbortController();
-                        const timeout = setTimeout(() => controller.abort(), 1500);
-                        const res = await fetch('https://mehfil-e-ghazal.onrender.com/', { signal: controller.signal });
-                        clearTimeout(timeout);
-                        if (res && res.ok) {
-                            const json = await res.json();
-                            if (json && json.status === 'ok') {
-                                window.MEHFIL_WS_URL = 'wss://mehfil-e-ghazal.onrender.com';
-                                console.info('[MEHFIL WS] Resolved Render host at runtime', window.MEHFIL_WS_URL);
-                            }
-                        }
-                    } catch (e) { /* probe failed - fall back to getWsEndpoint() */ }
-                } else {
+                // Start connection immediately using inlined env or window fallback. Do not block on probing.
+                if (window.MEHFIL_WS_URL && window.MEHFIL_WS_URL.length) {
                     console.info('[MEHFIL WS] Using window.MEHFIL_WS_URL preconfigured:', window.MEHFIL_WS_URL);
+                } else {
+                    console.info('[MEHFIL WS] No window.MEHFIL_WS_URL preconfigured; attempting immediate connect using getWsEndpoint() (dev fallback if necessary)');
                 }
 
-                // Start connection
+                // Start connection immediately
                 connect();
 
                 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') connect(); });

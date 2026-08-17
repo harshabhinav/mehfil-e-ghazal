@@ -1374,17 +1374,26 @@
             const mgr = window.__mehfil_presence_manager;
 
             function getWsEndpoint() {
-                // Prefer Vite inlined env, then window fallback, then same-host dev fallback
-                // Note: import.meta.env is only available at build time; prefer window.MEHFIL_WS_URL which is set by ws-bridge
-                try {
-                    const inlined = (import.meta && import.meta.env && import.meta.env.VITE_MEHFIL_WS_URL) ? import.meta.env.VITE_MEHFIL_WS_URL : undefined;
-                    if (inlined && inlined.length) return inlined;
-                } catch (e) {}
-                if (window.MEHFIL_WS_URL && window.MEHFIL_WS_URL.length) return window.MEHFIL_WS_URL;
+                // 1) Prefer explicit window override (set by ws-bridge or Vite-inlined script)
+                if (window.MEHFIL_WS_URL && window.MEHFIL_WS_URL.length) {
+                    console.info('[MEHFIL WS] Using window.MEHFIL_WS_URL', window.MEHFIL_WS_URL);
+                    return window.MEHFIL_WS_URL;
+                }
 
+                // 2) If running on production host (not localhost), default immediately to the Render service
                 const host = window.location.hostname || 'localhost';
+                const isLocal = (host === 'localhost' || host === '127.0.0.1' || host === '' );
+                if (!isLocal) {
+                    const prodUrl = 'wss://mehfil-e-ghazal.onrender.com';
+                    console.info('[MEHFIL WS] No window override; using production default', prodUrl);
+                    return prodUrl;
+                }
+
+                // 3) Development fallback
                 const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                return `${proto}//${host}:3001`;
+                const devUrl = `${proto}//${host}:3001`;
+                console.info('[MEHFIL WS] Using development fallback', devUrl);
+                return devUrl;
             }
 
             function connect() {

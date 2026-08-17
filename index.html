@@ -1347,8 +1347,13 @@
 
         // Realtime Cross-Device WebSocket Presence & Global WAH Synchronization
         function initPresenceSocket() {
+            // Prevent multiple initializations if script runs twice for any reason
+            if (window.__mehfil_presence_init) return;
+            window.__mehfil_presence_init = true;
+
             let pingTimer = null;
             let reconnectTimer = null;
+            let shouldReconnect = true;
 
             function getWsEndpoint() {
                 if (window.MEHFIL_WS_URL) return window.MEHFIL_WS_URL;
@@ -1358,26 +1363,32 @@
             }
 
             function connect() {
+                if (!shouldReconnect) return;
                 if (presenceWs && (presenceWs.readyState === WebSocket.OPEN || presenceWs.readyState === WebSocket.CONNECTING)) {
                     return;
                 }
 
                 try {
+                    console.log('[WS] Connecting to', getWsEndpoint());
                     presenceWs = new WebSocket(getWsEndpoint());
 
-                    presenceWs.onopen = () => {
-                        clearInterval(pingTimer);
+                    presenceWs.addEventListener('open', () => {
+                        console.log('[WS] Open');
+                        window.__presence_socket_open = true;
+                        if (pingTimer) clearInterval(pingTimer);
                         pingTimer = setInterval(() => {
                             if (presenceWs && presenceWs.readyState === WebSocket.OPEN) {
                                 presenceWs.send(JSON.stringify({ type: 'PING' }));
                             }
                         }, 4000);
-                    };
+                    });
 
-                    presenceWs.onmessage = (evt) => {
+                    presenceWs.addEventListener('message', (evt) => {
                         try {
                             const msg = JSON.parse(evt.data);
+                            console.log('[WS] Message', msg.type || 'unknown');
                             if (msg.type === 'INIT_STATE') {
+                                console.log('[WS] INIT_STATE', msg.presenceCount, msg.wahCount);
                                 if (onlineCountEl && typeof msg.presenceCount === 'number') {
                                     onlineCountEl.textContent = `${msg.presenceCount} Online`;
                                 }
@@ -1385,28 +1396,34 @@
                                     updateWahUI(msg.wahCount, false);
                                 }
                             } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
+                                console.log('[WS] PRESENCE_COUNT', msg.count);
                                 if (onlineCountEl) {
                                     onlineCountEl.textContent = `${msg.count} Online`;
                                 }
                             } else if (msg.type === 'WAH_COUNT' && typeof msg.count === 'number') {
+                                console.log('[WS] WAH_COUNT', msg.count);
                                 // Server broadcasted newly updated atomic global count
                                 updateWahUI(msg.count, true);
                             }
-                        } catch(err) {}
-                    };
+                        } catch(err) { console.warn('[WS] message parse error', err); }
+                    });
 
-                    presenceWs.onclose = () => {
-                        clearInterval(pingTimer);
-                        clearTimeout(reconnectTimer);
-                        reconnectTimer = setTimeout(connect, 2000);
-                    };
+                    presenceWs.addEventListener('close', () => {
+                        console.log('[WS] Close');
+                        window.__presence_socket_open = false;
+                        if (pingTimer) clearInterval(pingTimer);
+                        if (reconnectTimer) clearTimeout(reconnectTimer);
+                        if (shouldReconnect) reconnectTimer = setTimeout(connect, 2000);
+                    });
 
-                    presenceWs.onerror = () => {
+                    presenceWs.addEventListener('error', (e) => {
+                        console.warn('[WS] Error', e);
                         try { presenceWs.close(); } catch(e) {}
-                    };
+                    });
                 } catch(err) {
-                    clearTimeout(reconnectTimer);
-                    reconnectTimer = setTimeout(connect, 2000);
+                    console.warn('[WS] Connect exception', err);
+                    if (reconnectTimer) clearTimeout(reconnectTimer);
+                    if (shouldReconnect) reconnectTimer = setTimeout(connect, 2000);
                 }
             }
 
@@ -1419,7 +1436,28 @@
             });
 
             window.addEventListener('online', connect);
+
+            // Close socket cleanly on page unload to avoid stale connections
+            window.addEventListener('beforeunload', () => {
+                shouldReconnect = false;
+                try {
+                    if (presenceWs && presenceWs.readyState === WebSocket.OPEN) {
+                        presenceWs.close();
+                    }
+                } catch (e) {}
+            });
         }
+
+        // Ensure Wah click handler is attached exactly once
+        (function attachWahHandlers() {
+            try {
+                // Remove previous handlers if any (safe no-op)
+                if (wahBtn) wahBtn.removeEventListener('click', handleWahClick);
+                if (wahBtnMobile) wahBtnMobile.removeEventListener('click', handleWahClick);
+                if (wahBtn) wahBtn.addEventListener('click', (e) => { console.log('[WS] Wah click'); handleWahClick(e); });
+                if (wahBtnMobile) wahBtnMobile.addEventListener('click', (e) => { console.log('[WS] Wah click (mobile)'); handleWahClick(e); });
+            } catch (e) { console.warn('Error attaching wah handlers', e); }
+        })();
 
         initPresenceSocket();
     </script>

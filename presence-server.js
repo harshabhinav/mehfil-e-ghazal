@@ -83,13 +83,16 @@ setInterval(() => {
 wss.on('connection', (ws) => {
     const connectionId = 'conn_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
     clients.set(connectionId, { ws, lastPing: Date.now(), id: connectionId });
-    
+    console.log(`[WS] Client connected: ${connectionId}. Online: ${clients.size}`);
+
     // Send current initial state (presence + shared global WAH count) to new client
-    ws.send(JSON.stringify({
-        type: 'INIT_STATE',
-        presenceCount: clients.size,
-        wahCount: globalWahCount
-    }));
+    try {
+        ws.send(JSON.stringify({
+            type: 'INIT_STATE',
+            presenceCount: clients.size,
+            wahCount: globalWahCount
+        }));
+    } catch (e) { console.warn('[WS] INIT_STATE send failed', e); }
 
     // Broadcast updated presence to all clients
     broadcastPresence();
@@ -104,12 +107,16 @@ wss.on('connection', (ws) => {
                     ws.send(JSON.stringify({ type: 'PONG' }));
                 }
             } else if (data.type === 'INCREMENT_WAH') {
+                console.log('[WS] Wah received from', connectionId);
                 // Atomic Server Increment
                 globalWahCount += 1;
-                saveWahCount();
+                try { saveWahCount(); } catch(e) { console.warn('[WS] saveWahCount failed', e); }
+                console.log('[WS] Wah count:', globalWahCount, ' Broadcasting to', clients.size, 'clients');
                 broadcastWahCount(connectionId);
+            } else {
+                // Unknown message type - ignore
             }
-        } catch (e) {}
+        } catch (e) { console.warn('[WS] message parse error', e); }
     });
 
     ws.on('pong', () => {
@@ -119,11 +126,13 @@ wss.on('connection', (ws) => {
 
     ws.on('close', () => {
         clients.delete(connectionId);
+        console.log(`[WS] Client disconnected: ${connectionId}. Online: ${clients.size}`);
         broadcastPresence();
     });
 
-    ws.on('error', () => {
+    ws.on('error', (err) => {
         clients.delete(connectionId);
+        console.warn(`[WS] Client error: ${connectionId}`, err);
         broadcastPresence();
     });
 });

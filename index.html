@@ -1423,15 +1423,50 @@
                 }
             }
 
-            connect();
-
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible') {
-                    connect();
+            // Resolve WS URL before first connect: try Vercel-provided env, otherwise probe Render health endpoint as a production fallback.
+            async function resolveWsUrl() {
+                if (window.MEHFIL_WS_URL && window.MEHFIL_WS_URL.length) {
+                    console.log('[WS] Using existing window.MEHFIL_WS_URL', window.MEHFIL_WS_URL);
+                    return;
                 }
-            });
 
-            window.addEventListener('online', connect);
+                // Try known Render health endpoint - if it responds, use it as the WSS host.
+                const probeHost = 'https://mehfil-e-ghazal.onrender.com/';
+                try {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 1500);
+                    const res = await fetch(probeHost, { signal: controller.signal });
+                    clearTimeout(timeout);
+                    if (res && res.ok) {
+                        try {
+                            const json = await res.json();
+                            if (json && json.status === 'ok') {
+                                window.MEHFIL_WS_URL = 'wss://mehfil-e-ghazal.onrender.com';
+                                console.log('[WS] Probed Render health OK, setting window.MEHFIL_WS_URL to', window.MEHFIL_WS_URL);
+                                return;
+                            }
+                        } catch (e) {
+                            console.warn('[WS] Probe JSON parse failed', e);
+                        }
+                    }
+                } catch (e) {
+                    // probe failed or timed out - ignore and fall back to default behavior
+                    // console.debug('[WS] Probe failed', e && e.message);
+                }
+            }
+
+            (async () => {
+                await resolveWsUrl();
+                connect();
+
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'visible') {
+                        connect();
+                    }
+                });
+
+                window.addEventListener('online', connect);
+            })();
 
             // Close socket cleanly on page unload to avoid stale connections
             window.addEventListener('beforeunload', () => {

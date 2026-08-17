@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: mehfil-e-ghazal-presence
+    env: node
+    branch: main
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    root: .
+    autoDeploy: true

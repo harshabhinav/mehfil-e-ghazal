@@ -127,11 +127,21 @@ wss.on('connection', (ws, req) => {
                 }
             } else if (data.type === 'INCREMENT_WAH') {
                 console.log('[WS] Wah received from', sessionId);
-                // Atomic Server Increment
-                globalWahCount += 1;
+                // Atomic Monotonic Server Increment / Sync
+                const incomingCount = (typeof data.count === 'number' && Number.isFinite(data.count)) ? data.count : 0;
+                const newCount = Math.max(globalWahCount + 1, incomingCount);
+                globalWahCount = Math.max(globalWahCount, newCount);
                 try { saveWahCount(); } catch(e) { console.warn('[WS] saveWahCount failed', e); }
                 console.log('[WS] Wah count:', globalWahCount, ' Broadcasting to', clients.size, 'clients');
                 broadcastWahCount(sessionId);
+            } else if (data.type === 'SYNC_WAH') {
+                const clientCount = (typeof data.count === 'number' && Number.isFinite(data.count)) ? Math.floor(data.count) : 0;
+                if (clientCount > globalWahCount) {
+                    console.log(`[WS] Syncing higher Wah count (${clientCount} > ${globalWahCount}) from client: ${sessionId}`);
+                    globalWahCount = clientCount;
+                    try { saveWahCount(); } catch(e) { console.warn('[WS] saveWahCount failed', e); }
+                    broadcastWahCount();
+                }
             } else {
                 // Unknown message type - ignore
             }

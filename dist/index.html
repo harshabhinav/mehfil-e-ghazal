@@ -907,18 +907,12 @@
         function updateMediaSessionPositionState(customPos = null) {
             if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setPositionState !== 'function') return;
             try {
-                if (customPos !== null) {
+                const dur = (mainAudio && mainAudio.duration && !isNaN(mainAudio.duration) && mainAudio.duration > 0) ? mainAudio.duration : 0;
+                if (dur > 0) {
+                    const rawPos = (customPos !== null && typeof customPos === 'number') ? customPos : (mainAudio.currentTime || 0);
+                    const pos = Math.min(Math.max(0, rawPos), dur);
                     navigator.mediaSession.setPositionState({
-                        duration: 100,
-                        playbackRate: 1,
-                        position: 0
-                    });
-                    return;
-                }
-                if (mainAudio.duration && !isNaN(mainAudio.duration) && mainAudio.duration > 0) {
-                    const pos = Math.min(Math.max(0, mainAudio.currentTime || 0), mainAudio.duration);
-                    navigator.mediaSession.setPositionState({
-                        duration: mainAudio.duration,
+                        duration: dur,
                         playbackRate: mainAudio.playbackRate || 1,
                         position: pos
                     });
@@ -948,25 +942,34 @@
             registerMediaAction('nexttrack', handleNextTrack);
             registerMediaAction('seekbackward', (details) => {
                 const skipTime = (details && details.seekOffset) ? details.seekOffset : 10;
-                if (mainAudio.duration) {
-                    mainAudio.currentTime = Math.max(0, mainAudio.currentTime - skipTime);
-                    maxTimeSeen = mainAudio.currentTime;
-                    updateMediaSessionPositionState();
+                if (mainAudio.duration && !isNaN(mainAudio.duration)) {
+                    const targetTime = Math.max(0, mainAudio.currentTime - skipTime);
+                    mainAudio.currentTime = targetTime;
+                    maxTimeSeen = targetTime;
+                    lastDisplayedSeconds = -1;
+                    updateProgressUI();
+                    updateMediaSessionPositionState(targetTime);
                 }
             });
             registerMediaAction('seekforward', (details) => {
                 const skipTime = (details && details.seekOffset) ? details.seekOffset : 10;
-                if (mainAudio.duration) {
-                    mainAudio.currentTime = Math.min(mainAudio.duration, mainAudio.currentTime + skipTime);
-                    maxTimeSeen = mainAudio.currentTime;
-                    updateMediaSessionPositionState();
+                if (mainAudio.duration && !isNaN(mainAudio.duration)) {
+                    const targetTime = Math.min(mainAudio.duration, mainAudio.currentTime + skipTime);
+                    mainAudio.currentTime = targetTime;
+                    maxTimeSeen = targetTime;
+                    lastDisplayedSeconds = -1;
+                    updateProgressUI();
+                    updateMediaSessionPositionState(targetTime);
                 }
             });
             registerMediaAction('seekto', (details) => {
-                if (details && details.seekTime !== undefined && mainAudio.duration) {
-                    mainAudio.currentTime = Math.min(Math.max(0, details.seekTime), mainAudio.duration);
-                    maxTimeSeen = mainAudio.currentTime;
-                    updateMediaSessionPositionState();
+                if (details && details.seekTime !== undefined && mainAudio.duration && !isNaN(mainAudio.duration)) {
+                    const targetTime = Math.min(Math.max(0, details.seekTime), mainAudio.duration);
+                    mainAudio.currentTime = targetTime;
+                    maxTimeSeen = targetTime;
+                    lastDisplayedSeconds = -1;
+                    updateProgressUI();
+                    updateMediaSessionPositionState(targetTime);
                 }
             });
         }
@@ -1120,6 +1123,7 @@
                 if (currentTimeElMobile) currentTimeElMobile.textContent = formattedCurrent;
                 if (totalDurationEl) totalDurationEl.textContent = formattedTotal;
                 if (totalDurationElMobile) totalDurationElMobile.textContent = formattedTotal;
+                updateMediaSessionPositionState();
             }
         }
 
@@ -1135,6 +1139,7 @@
             // (2) the user's slider change handler on an intentional seek.
             lastDisplayedSeconds = -1;
             updateProgressUI();
+            updateMediaSessionPositionState();
         });
 
         mainAudio.addEventListener('loadedmetadata', () => {
@@ -1142,6 +1147,15 @@
                 mainAudio.currentTime = 0;
             }
             updateProgressUI();
+            updateMediaSessionPositionState();
+        });
+
+        mainAudio.addEventListener('durationchange', () => {
+            updateProgressUI();
+            updateMediaSessionPositionState();
+        });
+
+        mainAudio.addEventListener('ratechange', () => {
             updateMediaSessionPositionState();
         });
 
@@ -1287,6 +1301,17 @@
             const wahBtn = document.getElementById('wah-btn');
             const wahBtnMobile = document.getElementById('wah-btn-mobile');
 
+            let currentWahCount = 0;
+            try {
+                const saved = localStorage.getItem('mehfil_highest_wah_count');
+                if (saved !== null) {
+                    const parsed = parseInt(saved, 10);
+                    if (!isNaN(parsed) && parsed >= 0) {
+                        currentWahCount = parsed;
+                    }
+                }
+            } catch (e) {}
+
             function getSessionId() {
                 let sid = window.__mehfil_session_id || sessionStorage.getItem('mehfil_session_id');
                 if (!sid) {
@@ -1328,6 +1353,25 @@
                         setTimeout(() => wahBtnMobile.classList.remove('wah-button-active'), 150);
                     }
                     spawnFloatingWah(sourceEl);
+                }
+            }
+
+            // Immediately show persisted count on page load
+            if (currentWahCount > 0) {
+                updateWahUI(currentWahCount, false);
+            }
+
+            function processIncomingWahCount(receivedCount, animate = false, sourceEl = null) {
+                if (typeof receivedCount !== 'number' || isNaN(receivedCount)) return;
+                const num = Math.floor(receivedCount);
+                if (num > currentWahCount) {
+                    currentWahCount = num;
+                    try { localStorage.setItem('mehfil_highest_wah_count', currentWahCount.toString()); } catch(e) {}
+                    updateWahUI(currentWahCount, animate, sourceEl);
+                } else if (num < currentWahCount && mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
+                    try {
+                        mgr.ws.send(JSON.stringify({ type: 'SYNC_WAH', count: currentWahCount }));
+                    } catch (e) {}
                 }
             }
 
@@ -1383,6 +1427,12 @@
                         mgr.connecting = false;
                         mgr.backoffMs = 1000;
 
+                        if (currentWahCount > 0) {
+                            try {
+                                ws.send(JSON.stringify({ type: 'SYNC_WAH', count: currentWahCount }));
+                            } catch (e) {}
+                        }
+
                         if (mgr.pingTimer) clearInterval(mgr.pingTimer);
                         mgr.pingTimer = setInterval(() => {
                             try {
@@ -1398,11 +1448,11 @@
                             const msg = JSON.parse(evt.data);
                             if (msg.type === 'INIT_STATE') {
                                 if (typeof msg.presenceCount === 'number') updatePresenceUI(msg.presenceCount);
-                                if (typeof msg.wahCount === 'number') updateWahUI(msg.wahCount, false);
+                                if (typeof msg.wahCount === 'number') processIncomingWahCount(msg.wahCount, false);
                             } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
                                 updatePresenceUI(msg.count);
                             } else if (msg.type === 'WAH_COUNT' && typeof msg.count === 'number') {
-                                updateWahUI(msg.count, true);
+                                processIncomingWahCount(msg.count, true);
                             }
                         } catch (e) { console.warn('[MEHFIL WS] Message parse error', e); }
                     });
@@ -1451,10 +1501,14 @@
                 if (now - lastWahClickTimestamp < 150) return;
                 lastWahClickTimestamp = now;
 
+                currentWahCount += 1;
+                try { localStorage.setItem('mehfil_highest_wah_count', currentWahCount.toString()); } catch(e) {}
+                updateWahUI(currentWahCount, true, e ? e.currentTarget : null);
+
                 if (mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
                     try {
                         console.info('[MEHFIL WS] Increment Wah sent');
-                        mgr.ws.send(JSON.stringify({ type: 'INCREMENT_WAH' }));
+                        mgr.ws.send(JSON.stringify({ type: 'INCREMENT_WAH', count: currentWahCount }));
                     } catch (err) { console.warn('[MEHFIL WS] Wah send error', err); }
                 } else {
                     console.warn('[MEHFIL WS] Wah click while socket not connected');

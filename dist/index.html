@@ -904,15 +904,14 @@
             }
         }
 
-        function updateMediaSessionPositionState(customPos = null) {
+        function updateMediaSessionPositionState() {
             if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setPositionState !== 'function') return;
             try {
-                const dur = (mainAudio && mainAudio.duration && !isNaN(mainAudio.duration) && mainAudio.duration > 0) ? mainAudio.duration : 0;
-                if (dur > 0) {
-                    const rawPos = (customPos !== null && typeof customPos === 'number') ? customPos : (mainAudio.currentTime || 0);
-                    const pos = Math.min(Math.max(0, rawPos), dur);
+                if (mainAudio && mainAudio.duration && !isNaN(mainAudio.duration) && mainAudio.duration > 0) {
+                    const currentPos = (mainAudio.currentTime && !isNaN(mainAudio.currentTime)) ? mainAudio.currentTime : 0;
+                    const pos = Math.min(Math.max(0, currentPos), mainAudio.duration);
                     navigator.mediaSession.setPositionState({
-                        duration: dur,
+                        duration: mainAudio.duration,
                         playbackRate: mainAudio.playbackRate || 1,
                         position: pos
                     });
@@ -948,7 +947,6 @@
                     maxTimeSeen = targetTime;
                     lastDisplayedSeconds = -1;
                     updateProgressUI();
-                    updateMediaSessionPositionState(targetTime);
                 }
             });
             registerMediaAction('seekforward', (details) => {
@@ -959,7 +957,6 @@
                     maxTimeSeen = targetTime;
                     lastDisplayedSeconds = -1;
                     updateProgressUI();
-                    updateMediaSessionPositionState(targetTime);
                 }
             });
             registerMediaAction('seekto', (details) => {
@@ -969,7 +966,6 @@
                     maxTimeSeen = targetTime;
                     lastDisplayedSeconds = -1;
                     updateProgressUI();
-                    updateMediaSessionPositionState(targetTime);
                 }
             });
         }
@@ -997,7 +993,7 @@
             if ('mediaSession' in navigator) {
                 try {
                     navigator.mediaSession.playbackState = shouldPlay ? "playing" : "paused";
-                    updateMediaSessionPositionState(0);
+                    updateMediaSessionPositionState();
                 } catch (e) {}
             }
 
@@ -1061,7 +1057,10 @@
                 recordContainer.classList.add('paused-record');
             }
             if ('mediaSession' in navigator) {
-                try { navigator.mediaSession.playbackState = "paused"; } catch (e) {}
+                try {
+                    navigator.mediaSession.playbackState = "paused";
+                    updateMediaSessionPositionState();
+                } catch (e) {}
             }
         }
 

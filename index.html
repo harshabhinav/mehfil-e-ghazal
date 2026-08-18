@@ -921,31 +921,8 @@
         function updateMediaSessionPositionState() {
             if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setPositionState !== 'function') return;
             try {
-                if (!mainAudio) return;
-                const dur = mainAudio.duration;
-                if (typeof dur === 'number' && !isNaN(dur) && isFinite(dur) && dur > 0) {
-                    let cur = mainAudio.currentTime;
-                    if (typeof cur !== 'number' || isNaN(cur) || !isFinite(cur) || cur < 0) {
-                        cur = 0;
-                    }
-                    const pos = Math.min(Math.max(0, cur), dur);
-                    let rate = mainAudio.playbackRate;
-                    if (typeof rate !== 'number' || isNaN(rate) || !isFinite(rate) || rate <= 0) {
-                        rate = 1;
-                    }
-                    navigator.mediaSession.setPositionState({
-                        duration: dur,
-                        playbackRate: rate,
-                        position: pos
-                    });
-                } else {
-                    try {
-                        navigator.mediaSession.setPositionState(null);
-                    } catch (e) {}
-                }
-            } catch (err) {
-                console.warn("MediaSession positionState update error:", err);
-            }
+                navigator.mediaSession.setPositionState(null);
+            } catch (err) {}
         }
 
         let currentTrackIndex = 0;
@@ -966,35 +943,9 @@
             registerMediaAction('pause', () => { pauseTrack(); });
             registerMediaAction('previoustrack', handlePrevTrack);
             registerMediaAction('nexttrack', handleNextTrack);
-            registerMediaAction('seekbackward', (details) => {
-                const skipTime = (details && details.seekOffset) ? details.seekOffset : 10;
-                if (mainAudio.duration && !isNaN(mainAudio.duration)) {
-                    const targetTime = Math.max(0, mainAudio.currentTime - skipTime);
-                    mainAudio.currentTime = targetTime;
-                    maxTimeSeen = targetTime;
-                    lastDisplayedSeconds = -1;
-                    updateProgressUI();
-                }
-            });
-            registerMediaAction('seekforward', (details) => {
-                const skipTime = (details && details.seekOffset) ? details.seekOffset : 10;
-                if (mainAudio.duration && !isNaN(mainAudio.duration)) {
-                    const targetTime = Math.min(mainAudio.duration, mainAudio.currentTime + skipTime);
-                    mainAudio.currentTime = targetTime;
-                    maxTimeSeen = targetTime;
-                    lastDisplayedSeconds = -1;
-                    updateProgressUI();
-                }
-            });
-            registerMediaAction('seekto', (details) => {
-                if (details && details.seekTime !== undefined && mainAudio.duration && !isNaN(mainAudio.duration)) {
-                    const targetTime = Math.min(Math.max(0, details.seekTime), mainAudio.duration);
-                    mainAudio.currentTime = targetTime;
-                    maxTimeSeen = targetTime;
-                    lastDisplayedSeconds = -1;
-                    updateProgressUI();
-                }
-            });
+            registerMediaAction('seekbackward', null);
+            registerMediaAction('seekforward', null);
+            registerMediaAction('seekto', null);
         }
 
         // Initialize OS Media Session Action Handlers immediately on script load

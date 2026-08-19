@@ -196,27 +196,28 @@
         // Prevent Flash of Wrong Theme by setting initial src synchronously
         (function() {
             let initialSrc = '';
-            if (window.innerWidth < 768) {
-                // Mobile: Always force Auto mode initially
-                const h = new Date().getHours();
-                initialSrc = './assets/backgrounds/Night newp9.jpeg';
-                if (h >= 6 && h < 18) initialSrc = './assets/backgrounds/Day p.jpeg';
-                else if (h >= 18 && h < 20) initialSrc = './assets/backgrounds/Evening p.jpeg';
+            const isMobile = window.innerWidth < 768;
+            const savedTheme = localStorage.getItem('mehfil_theme_mode') || 'auto';
+            if (savedTheme === 'day') {
+                initialSrc = isMobile ? './assets/backgrounds/Day p.jpeg' : './assets/backgrounds/Day2.jpeg';
+            } else if (savedTheme === 'evening') {
+                initialSrc = isMobile ? './assets/backgrounds/Evening p.jpeg' : './assets/backgrounds/Evening (2).jpeg';
+            } else if (savedTheme === 'night') {
+                initialSrc = isMobile ? './assets/backgrounds/Night newp9.jpeg' : './assets/backgrounds/Night.jpeg';
             } else {
-                // Desktop: Respect localStorage or fallback to Auto
-                const savedTheme = localStorage.getItem('mehfil_theme_mode') || 'auto';
-                if (savedTheme === 'day') initialSrc = './assets/backgrounds/Day2.jpeg';
-                else if (savedTheme === 'evening') initialSrc = './assets/backgrounds/Evening (2).jpeg';
-                else if (savedTheme === 'night') initialSrc = './assets/backgrounds/Night.jpeg';
-                else {
-                    const h = new Date().getHours();
-                    initialSrc = './assets/backgrounds/Night.jpeg';
-                    if (h >= 6 && h < 18) initialSrc = './assets/backgrounds/Day2.jpeg';
-                    else if (h >= 18 && h < 20) initialSrc = './assets/backgrounds/Evening (2).jpeg';
+                const h = new Date().getHours();
+                if (h >= 6 && h < 18) {
+                    initialSrc = isMobile ? './assets/backgrounds/Day p.jpeg' : './assets/backgrounds/Day2.jpeg';
+                } else if (h >= 18 && h < 20) {
+                    initialSrc = isMobile ? './assets/backgrounds/Evening p.jpeg' : './assets/backgrounds/Evening (2).jpeg';
+                } else {
+                    initialSrc = isMobile ? './assets/backgrounds/Night newp9.jpeg' : './assets/backgrounds/Night.jpeg';
                 }
             }
-            document.getElementById('bg-layer-base').src = initialSrc;
-            document.getElementById('bg-layer-overlay').src = initialSrc;
+            const baseLayer = document.getElementById('bg-layer-base');
+            const overlayLayer = document.getElementById('bg-layer-overlay');
+            if (baseLayer) baseLayer.src = initialSrc;
+            if (overlayLayer) overlayLayer.src = initialSrc;
         })();
     </script>
     <script type="module">
@@ -389,9 +390,6 @@
 
         // Theme State Management
         let activeThemeMode = localStorage.getItem('mehfil_theme_mode') || 'auto'; // 'day', 'evening', 'night', or 'auto'
-        if (window.innerWidth < 768) {
-            activeThemeMode = 'auto';
-        }
         let currentDisplayedThemeState = null;
         let activeLayerIndex = 0; // 0: base layer, 1: overlay layer
 
@@ -926,6 +924,55 @@
         }
 
         let currentTrackIndex = 0;
+        let pendingRestoredTime = null;
+        let isInitialLoad = true;
+
+        function getInitialTrackIndex() {
+            try {
+                const savedIndexRaw = localStorage.getItem('mehfil_current_track_index');
+                const savedSrc = localStorage.getItem('mehfil_current_track_src');
+                const savedTitle = localStorage.getItem('mehfil_current_track_title');
+
+                if (savedSrc || savedTitle) {
+                    const foundIndex = playlist.findIndex(track => 
+                        (savedSrc && track.src === savedSrc) || 
+                        (savedTitle && track.title === savedTitle)
+                    );
+                    if (foundIndex !== -1) return foundIndex;
+                }
+
+                if (savedIndexRaw !== null) {
+                    const parsedIndex = parseInt(savedIndexRaw, 10);
+                    if (!isNaN(parsedIndex) && parsedIndex >= 0 && parsedIndex < playlist.length) {
+                        return parsedIndex;
+                    }
+                }
+            } catch (e) {
+                console.warn("Error reading saved track state:", e);
+            }
+            return 0;
+        }
+
+        function getSavedPlaybackPosition() {
+            try {
+                const rawTime = localStorage.getItem('mehfil_current_time');
+                if (rawTime !== null) {
+                    const parsedTime = parseFloat(rawTime);
+                    if (!isNaN(parsedTime) && parsedTime > 0) {
+                        return parsedTime;
+                    }
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        function saveCurrentPlaybackTime() {
+            if (!isSeeking && mainAudio && !isNaN(mainAudio.currentTime)) {
+                try {
+                    localStorage.setItem('mehfil_current_time', mainAudio.currentTime.toString());
+                } catch (e) {}
+            }
+        }
 
         function handleNextTrack() {
             currentTrackIndex = (currentTrackIndex + 1) % playlist.length;
@@ -957,6 +1004,22 @@
         function loadTrack(index, shouldPlay = false) {
             currentTrackIndex = index;
             const requestId = ++activeTrackRequestId;
+
+            // Save active track state to localStorage
+            try {
+                localStorage.setItem('mehfil_current_track_index', index.toString());
+                if (playlist[index]) {
+                    localStorage.setItem('mehfil_current_track_src', playlist[index].src);
+                    localStorage.setItem('mehfil_current_track_title', playlist[index].title);
+                }
+            } catch (e) {}
+
+            if (!isInitialLoad) {
+                pendingRestoredTime = null;
+                try {
+                    localStorage.setItem('mehfil_current_time', '0');
+                } catch (e) {}
+            }
 
             // 1. Reset progress state for new track (timeupdate-driven, no RAF to cancel)
             lastDisplayedSeconds = -1;
@@ -1040,6 +1103,7 @@
                     updateMediaSessionPositionState();
                 } catch (e) {}
             }
+            saveCurrentPlaybackTime();
         }
 
         playPauseBtn.addEventListener('click', () => {
@@ -1106,7 +1170,10 @@
 
         // Single source of truth: timeupdate is the ONLY mechanism that drives progress.
         // No RAF, no setInterval — they caused race conditions and jitter on mobile.
-        mainAudio.addEventListener('timeupdate', updateProgressUI);
+        mainAudio.addEventListener('timeupdate', () => {
+            updateProgressUI();
+            saveCurrentPlaybackTime();
+        });
 
         mainAudio.addEventListener('seeked', () => {
             // IMPORTANT: do NOT reset maxTimeSeen here.
@@ -1117,9 +1184,27 @@
             lastDisplayedSeconds = -1;
             updateProgressUI();
             updateMediaSessionPositionState();
+            saveCurrentPlaybackTime();
         });
 
+        function applyPendingRestoredTime() {
+            if (pendingRestoredTime !== null && mainAudio.duration && !isNaN(mainAudio.duration)) {
+                const targetTime = pendingRestoredTime;
+                pendingRestoredTime = null;
+                if (targetTime > 0 && targetTime < mainAudio.duration) {
+                    try {
+                        mainAudio.currentTime = targetTime;
+                        maxTimeSeen = targetTime;
+                        lastDisplayedSeconds = -1;
+                    } catch (e) {
+                        console.warn("Failed to restore currentTime:", e);
+                    }
+                }
+            }
+        }
+
         mainAudio.addEventListener('loadedmetadata', () => {
+            applyPendingRestoredTime();
             if (mainAudio.currentTime > 0 && mainAudio.currentTime === mainAudio.duration) {
                 mainAudio.currentTime = 0;
             }
@@ -1133,11 +1218,20 @@
         });
 
         mainAudio.addEventListener('canplay', () => {
+            applyPendingRestoredTime();
             updateMediaSessionPositionState();
         });
 
         mainAudio.addEventListener('ratechange', () => {
             updateMediaSessionPositionState();
+        });
+
+        window.addEventListener('beforeunload', saveCurrentPlaybackTime);
+        window.addEventListener('pagehide', saveCurrentPlaybackTime);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                saveCurrentPlaybackTime();
+            }
         });
 
         // Keep OS Media Controls active during track transition loading & buffering
@@ -1191,6 +1285,7 @@
                 isSeeking = false;
                 updateProgressUI();
                 updateMediaSessionPositionState();
+                saveCurrentPlaybackTime();
             });
             sliderEl.addEventListener('pointerup', () => { isSeeking = false; });
             sliderEl.addEventListener('touchend', () => { isSeeking = false; });
@@ -1229,11 +1324,16 @@
         }
 
         function syncVolume(val) {
-            mainAudio.volume = val;
-            if (volumeSlider) volumeSlider.value = val;
-            if (volumeSliderMobile) volumeSliderMobile.value = val;
-            if (val > 0) lastVolume = val;
+            const numVal = parseFloat(val);
+            if (isNaN(numVal)) return;
+            mainAudio.volume = numVal;
+            if (volumeSlider) volumeSlider.value = numVal;
+            if (volumeSliderMobile) volumeSliderMobile.value = numVal;
+            if (numVal > 0) lastVolume = numVal;
             updateMuteIcon();
+            try {
+                localStorage.setItem('mehfil_volume', numVal.toString());
+            } catch(e) {}
         }
 
         if (volumeSlider) {
@@ -1269,8 +1369,25 @@
             }
         });
 
-        // Load initial track details
-        loadTrack(0);
+        // Restore saved volume
+        let savedVolume = 1;
+        try {
+            const rawVol = localStorage.getItem('mehfil_volume');
+            if (rawVol !== null) {
+                const parsedVol = parseFloat(rawVol);
+                if (!isNaN(parsedVol) && parsedVol >= 0 && parsedVol <= 1) {
+                    savedVolume = parsedVol;
+                }
+            }
+        } catch(e) {}
+        syncVolume(savedVolume);
+
+        // Restore initial track and playback position
+        const initialTrackIdx = getInitialTrackIndex();
+        pendingRestoredTime = getSavedPlaybackPosition();
+
+        loadTrack(initialTrackIdx, false);
+        isInitialLoad = false;
 
         // 4. Realtime WebSocket Presence & Shared WAH Server Connection
         (function initMehfilPresence() {

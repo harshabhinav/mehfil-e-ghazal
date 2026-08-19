@@ -224,19 +224,185 @@
         })();
     </script>
     <script type="module">
-      // Inline bridge: set window.MEHFIL_WS_URL at parse time so the presence socket can connect immediately
-      try {
-        const envWs = import.meta.env.VITE_MEHFIL_WS_URL;
-        if (envWs && typeof envWs === 'string' && envWs.length) {
-          window.MEHFIL_WS_URL = envWs;
-          console.info('[MEHFIL WS] VITE_MEHFIL_WS_URL inlined', window.MEHFIL_WS_URL);
-        } else {
-          console.info('[MEHFIL WS] No VITE_MEHFIL_WS_URL available at build time');
+      // 🚀 EARLY WEBSOCKET PRESENCE ENGINE
+      // Connects immediately during HTML parsing without waiting for DOMContentLoaded, audio loading, images, or main script parsing.
+      (function initMehfilPresenceEarly() {
+        if (window.__mehfil_presence_initialized) return;
+        window.__mehfil_presence_initialized = true;
+
+        let latestOnlineCount = null;
+
+        function getSessionId() {
+          let sid = window.__mehfil_session_id || (function() {
+            try { return sessionStorage.getItem('mehfil_session_id'); } catch(e) { return null; }
+          })();
+          if (!sid) {
+            sid = 'sess_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+            try { sessionStorage.setItem('mehfil_session_id', sid); } catch(e) {}
+            window.__mehfil_session_id = sid;
+          }
+          return sid;
         }
-      } catch (e) {
-        // import.meta.env only available in module contexts; ignore silently if not accessible
-        console.info('[MEHFIL WS] import.meta.env access failed', e && e.message);
-      }
+
+        window.__mehfil_update_presence_ui = function(count) {
+          if (count === undefined || count === null) return;
+          latestOnlineCount = count;
+          const el = document.getElementById('online-count');
+          if (el) {
+            el.textContent = `${count} Online`;
+          }
+        };
+
+        function getWsEndpoint() {
+          const sid = getSessionId();
+          const param = `sessionId=${encodeURIComponent(sid)}`;
+
+          let customUrl = null;
+          try {
+            if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_MEHFIL_WS_URL) {
+              customUrl = import.meta.env.VITE_MEHFIL_WS_URL;
+            }
+          } catch(e) {}
+          if (!customUrl && window.MEHFIL_WS_URL && typeof window.MEHFIL_WS_URL === 'string' && window.MEHFIL_WS_URL.length) {
+            customUrl = window.MEHFIL_WS_URL;
+          }
+
+          if (customUrl && typeof customUrl === 'string' && customUrl.length) {
+            const sep = customUrl.includes('?') ? '&' : '?';
+            return `${customUrl}${sep}${param}`;
+          }
+
+          const host = window.location.hostname || 'localhost';
+          const isLocal = (host === 'localhost' || host === '127.0.0.1' || host === '');
+          const base = isLocal
+            ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${host}:3001`
+            : 'wss://mehfil-e-ghazal.onrender.com';
+          return `${base}?${param}`;
+        }
+
+        const mgr = {
+          ws: null,
+          connecting: false,
+          shouldReconnect: true,
+          reconnectTimer: null,
+          pingTimer: null,
+          backoffMs: 1000,
+          getOnlineCount: () => latestOnlineCount
+        };
+        window.__mehfil_presence_manager = mgr;
+
+        function connect() {
+          if (!mgr.shouldReconnect) return;
+          if (mgr.ws && (mgr.ws.readyState === WebSocket.OPEN || mgr.ws.readyState === WebSocket.CONNECTING)) return;
+          if (mgr.connecting) return;
+          mgr.connecting = true;
+
+          const wsUrl = getWsEndpoint();
+          console.info('[MEHFIL WS] Connecting to:', wsUrl);
+
+          try {
+            const ws = new WebSocket(wsUrl);
+            mgr.ws = ws;
+
+            ws.addEventListener('open', () => {
+              console.info('[MEHFIL WS] Connected');
+              mgr.connecting = false;
+              mgr.backoffMs = 1000;
+
+              if (typeof window.__mehfil_get_wah_count === 'function') {
+                const currentWah = window.__mehfil_get_wah_count();
+                if (currentWah > 0) {
+                  try {
+                    ws.send(JSON.stringify({ type: 'SYNC_WAH', count: currentWah }));
+                  } catch(e) {}
+                }
+              }
+
+              if (mgr.pingTimer) clearInterval(mgr.pingTimer);
+              mgr.pingTimer = setInterval(() => {
+                try {
+                  if (mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
+                    mgr.ws.send(JSON.stringify({ type: 'PING' }));
+                  }
+                } catch(e) {}
+              }, 4000);
+            });
+
+            ws.addEventListener('message', (evt) => {
+              try {
+                const msg = JSON.parse(evt.data);
+                if (msg.type === 'INIT_STATE') {
+                  if (typeof msg.presenceCount === 'number') {
+                    window.__mehfil_update_presence_ui(msg.presenceCount);
+                  }
+                  if (typeof msg.wahCount === 'number' && typeof window.__mehfil_process_wah_count === 'function') {
+                    window.__mehfil_process_wah_count(msg.wahCount, false);
+                  }
+                } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
+                  window.__mehfil_update_presence_ui(msg.count);
+                } else if (msg.type === 'WAH_COUNT' && typeof msg.count === 'number' && typeof window.__mehfil_process_wah_count === 'function') {
+                  window.__mehfil_process_wah_count(msg.count, true);
+                }
+              } catch (e) {
+                console.warn('[MEHFIL WS] Message parse error', e);
+              }
+            });
+
+            ws.addEventListener('close', () => {
+              console.info('[MEHFIL WS] Connection closed');
+              mgr.connecting = false;
+              if (mgr.pingTimer) { clearInterval(mgr.pingTimer); mgr.pingTimer = null; }
+              mgr.ws = null;
+
+              if (mgr.shouldReconnect) {
+                if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
+                mgr.reconnectTimer = setTimeout(() => {
+                  mgr.backoffMs = Math.min(15000, mgr.backoffMs * 1.5);
+                  connect();
+                }, mgr.backoffMs);
+              }
+            });
+
+            ws.addEventListener('error', (err) => {
+              console.warn('[MEHFIL WS] Error', err && err.message);
+              try { if (mgr.ws) mgr.ws.close(); } catch(e) {}
+            });
+
+          } catch (e) {
+            console.warn('[MEHFIL WS] Connect exception', e && e.message);
+            mgr.connecting = false;
+            if (mgr.shouldReconnect) {
+              if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
+              mgr.reconnectTimer = setTimeout(() => {
+                mgr.backoffMs = Math.min(15000, mgr.backoffMs * 1.5);
+                connect();
+              }, mgr.backoffMs);
+            }
+          }
+        }
+
+        mgr.connect = connect;
+        connect();
+
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') connect();
+        });
+        window.addEventListener('online', connect);
+
+        const handleUnload = () => {
+          mgr.shouldReconnect = false;
+          if (mgr.pingTimer) clearInterval(mgr.pingTimer);
+          if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
+          try {
+            if (mgr.ws && (mgr.ws.readyState === WebSocket.OPEN || mgr.ws.readyState === WebSocket.CONNECTING)) {
+              mgr.ws.close(1000, "Page unload");
+            }
+          } catch (e) {}
+        };
+
+        window.addEventListener('beforeunload', handleUnload);
+        window.addEventListener('pagehide', handleUnload);
+      })();
     </script>
 
     <!-- 2. Top Navigation Bar -->
@@ -1392,12 +1558,8 @@
         loadTrack(initialTrackIdx, false);
         isInitialLoad = false;
 
-        // 4. Realtime WebSocket Presence & Shared WAH Server Connection
-        (function initMehfilPresence() {
-            if (window.__mehfil_presence_initialized) return;
-            window.__mehfil_presence_initialized = true;
-
-            const onlineCountEl = document.getElementById('online-count');
+        // 4. Shared WAH Server & Wah UI Integration
+        (function initMehfilWahIntegration() {
             const clapCounter = document.getElementById('clap-counter');
             const clapCounterMobile = document.getElementById('clap-counter-mobile');
             const wahBtn = document.getElementById('wah-btn');
@@ -1414,15 +1576,9 @@
                 }
             } catch (e) {}
 
-            function getSessionId() {
-                let sid = window.__mehfil_session_id || sessionStorage.getItem('mehfil_session_id');
-                if (!sid) {
-                    sid = 'sess_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
-                    try { sessionStorage.setItem('mehfil_session_id', sid); } catch(e) {}
-                    window.__mehfil_session_id = sid;
-                }
-                return sid;
-            }
+            window.__mehfil_get_wah_count = function() {
+                return currentWahCount;
+            };
 
             function spawnFloatingWah(containerEl) {
                 const target = containerEl || (window.innerWidth < 768 ? wahBtnMobile : wahBtn);
@@ -1458,137 +1614,34 @@
                 }
             }
 
-            // Immediately show persisted count on page load
+            // Show persisted Wah count immediately
             if (currentWahCount > 0) {
                 updateWahUI(currentWahCount, false);
             }
 
-            function processIncomingWahCount(receivedCount, animate = false, sourceEl = null) {
+            window.__mehfil_process_wah_count = function(receivedCount, animate = false, sourceEl = null) {
                 if (typeof receivedCount !== 'number' || isNaN(receivedCount)) return;
                 const num = Math.floor(receivedCount);
                 if (num > currentWahCount) {
                     currentWahCount = num;
                     try { localStorage.setItem('mehfil_highest_wah_count', currentWahCount.toString()); } catch(e) {}
                     updateWahUI(currentWahCount, animate, sourceEl);
-                } else if (num < currentWahCount && mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
-                    try {
-                        mgr.ws.send(JSON.stringify({ type: 'SYNC_WAH', count: currentWahCount }));
-                    } catch (e) {}
-                }
-            }
-
-            function updatePresenceUI(count) {
-                if (count === undefined || count === null) return;
-                if (onlineCountEl) {
-                    onlineCountEl.textContent = `${count} Online`;
-                }
-            }
-
-            function getWsEndpoint() {
-                const sid = getSessionId();
-                const param = `sessionId=${encodeURIComponent(sid)}`;
-
-                if (window.MEHFIL_WS_URL && typeof window.MEHFIL_WS_URL === 'string' && window.MEHFIL_WS_URL.length) {
-                    const sep = window.MEHFIL_WS_URL.includes('?') ? '&' : '?';
-                    return `${window.MEHFIL_WS_URL}${sep}${param}`;
-                }
-
-                const host = window.location.hostname || 'localhost';
-                const isLocal = (host === 'localhost' || host === '127.0.0.1' || host === '');
-                const base = isLocal
-                    ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${host}:3001`
-                    : 'wss://mehfil-e-ghazal.onrender.com';
-                return `${base}?${param}`;
-            }
-
-            const mgr = {
-                ws: null,
-                connecting: false,
-                shouldReconnect: true,
-                reconnectTimer: null,
-                pingTimer: null,
-                backoffMs: 1000
-            };
-            window.__mehfil_presence_manager = mgr;
-
-            function connect() {
-                if (!mgr.shouldReconnect) return;
-                if (mgr.ws && (mgr.ws.readyState === WebSocket.OPEN || mgr.ws.readyState === WebSocket.CONNECTING)) return;
-                if (mgr.connecting) return;
-                mgr.connecting = true;
-
-                const wsUrl = getWsEndpoint();
-                console.info('[MEHFIL WS] Connecting to:', wsUrl);
-
-                try {
-                    const ws = new WebSocket(wsUrl);
-                    mgr.ws = ws;
-
-                    ws.addEventListener('open', () => {
-                        console.info('[MEHFIL WS] Connected');
-                        mgr.connecting = false;
-                        mgr.backoffMs = 1000;
-
-                        if (currentWahCount > 0) {
-                            try {
-                                ws.send(JSON.stringify({ type: 'SYNC_WAH', count: currentWahCount }));
-                            } catch (e) {}
-                        }
-
-                        if (mgr.pingTimer) clearInterval(mgr.pingTimer);
-                        mgr.pingTimer = setInterval(() => {
-                            try {
-                                if (mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
-                                    mgr.ws.send(JSON.stringify({ type: 'PING' }));
-                                }
-                            } catch(e) {}
-                        }, 4000);
-                    });
-
-                    ws.addEventListener('message', (evt) => {
+                } else if (num < currentWahCount) {
+                    const mgr = window.__mehfil_presence_manager;
+                    if (mgr && mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
                         try {
-                            const msg = JSON.parse(evt.data);
-                            if (msg.type === 'INIT_STATE') {
-                                if (typeof msg.presenceCount === 'number') updatePresenceUI(msg.presenceCount);
-                                if (typeof msg.wahCount === 'number') processIncomingWahCount(msg.wahCount, false);
-                            } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
-                                updatePresenceUI(msg.count);
-                            } else if (msg.type === 'WAH_COUNT' && typeof msg.count === 'number') {
-                                processIncomingWahCount(msg.count, true);
-                            }
-                        } catch (e) { console.warn('[MEHFIL WS] Message parse error', e); }
-                    });
-
-                    ws.addEventListener('close', () => {
-                        console.info('[MEHFIL WS] Connection closed');
-                        mgr.connecting = false;
-                        if (mgr.pingTimer) { clearInterval(mgr.pingTimer); mgr.pingTimer = null; }
-                        mgr.ws = null;
-
-                        if (mgr.shouldReconnect) {
-                            if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
-                            mgr.reconnectTimer = setTimeout(() => {
-                                mgr.backoffMs = Math.min(15000, mgr.backoffMs * 1.5);
-                                connect();
-                            }, mgr.backoffMs);
-                        }
-                    });
-
-                    ws.addEventListener('error', (err) => {
-                        console.warn('[MEHFIL WS] Error', err && err.message);
-                        try { if (mgr.ws) mgr.ws.close(); } catch(e) {}
-                    });
-
-                } catch (e) {
-                    console.warn('[MEHFIL WS] Connect exception', e && e.message);
-                    mgr.connecting = false;
-                    if (mgr.shouldReconnect) {
-                        if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
-                        mgr.reconnectTimer = setTimeout(() => {
-                            mgr.backoffMs = Math.min(15000, mgr.backoffMs * 1.5);
-                            connect();
-                        }, mgr.backoffMs);
+                            mgr.ws.send(JSON.stringify({ type: 'SYNC_WAH', count: currentWahCount }));
+                        } catch (e) {}
                     }
+                }
+            };
+
+            // Update presence count UI if websocket already received state before this script ran
+            const mgr = window.__mehfil_presence_manager;
+            if (mgr && typeof mgr.getOnlineCount === 'function') {
+                const count = mgr.getOnlineCount();
+                if (count !== null && typeof window.__mehfil_update_presence_ui === 'function') {
+                    window.__mehfil_update_presence_ui(count);
                 }
             }
 
@@ -1607,14 +1660,15 @@
                 try { localStorage.setItem('mehfil_highest_wah_count', currentWahCount.toString()); } catch(e) {}
                 updateWahUI(currentWahCount, true, e ? e.currentTarget : null);
 
-                if (mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
+                const mgr = window.__mehfil_presence_manager;
+                if (mgr && mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
                     try {
                         console.info('[MEHFIL WS] Increment Wah sent');
                         mgr.ws.send(JSON.stringify({ type: 'INCREMENT_WAH', count: currentWahCount }));
                     } catch (err) { console.warn('[MEHFIL WS] Wah send error', err); }
-                } else {
+                } else if (mgr && typeof mgr.connect === 'function') {
                     console.warn('[MEHFIL WS] Wah click while socket not connected');
-                    connect();
+                    mgr.connect();
                 }
 
                 if (typeof isWeb3Configured !== 'undefined' && isWeb3Configured && typeof window.ethereum !== 'undefined') {
@@ -1622,27 +1676,12 @@
                 }
             }
 
-            // Attach Wah click handlers exactly once
             if (wahBtn) {
                 wahBtn.addEventListener('click', handleWahClick);
             }
             if (wahBtnMobile) {
                 wahBtnMobile.addEventListener('click', handleWahClick);
             }
-
-            connect();
-
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible') connect();
-            });
-            window.addEventListener('online', connect);
-
-            window.addEventListener('beforeunload', () => {
-                mgr.shouldReconnect = false;
-                if (mgr.pingTimer) clearInterval(mgr.pingTimer);
-                if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
-                try { if (mgr.ws) mgr.ws.close(); } catch (e) {}
-            });
         })();
     </script>
 </body>

@@ -176,7 +176,7 @@
             transition: none !important;
         }
     </style>
-  <script type="module" crossorigin src="/assets/index-BfJQz0_-.js"></script>
+  <script type="module" crossorigin src="/assets/index-C_VlBXp9.js"></script>
 </head>
 <body class="font-sans relative">
     <script>
@@ -1393,20 +1393,7 @@
             const wahBtn = document.getElementById('wah-btn');
             const wahBtnMobile = document.getElementById('wah-btn-mobile');
 
-            let currentWahCount = 0;
-            try {
-                const saved = localStorage.getItem('mehfil_highest_wah_count');
-                if (saved !== null) {
-                    const parsed = parseInt(saved, 10);
-                    if (!isNaN(parsed) && parsed >= 0) {
-                        currentWahCount = parsed;
-                    }
-                }
-            } catch (e) {}
-
-            window.__mehfil_get_wah_count = function() {
-                return currentWahCount;
-            };
+            let currentWahCount = null;
 
             function spawnFloatingWah(containerEl) {
                 const target = containerEl || (window.innerWidth < 768 ? wahBtnMobile : wahBtn);
@@ -1423,8 +1410,8 @@
                 setTimeout(() => emoji.remove(), 1200);
             }
 
-            function updateWahUI(count, animate = false, sourceEl = null) {
-                if (count === undefined || count === null) return;
+            function updateWahUI(count, animate = false) {
+                if (count === undefined || count === null || isNaN(count)) return;
                 const formatted = Number(count).toLocaleString();
                 if (clapCounter) clapCounter.textContent = formatted;
                 if (clapCounterMobile) clapCounterMobile.textContent = formatted;
@@ -1438,30 +1425,13 @@
                         wahBtnMobile.classList.add('wah-button-active');
                         setTimeout(() => wahBtnMobile.classList.remove('wah-button-active'), 150);
                     }
-                    spawnFloatingWah(sourceEl);
                 }
             }
 
-            // Show persisted Wah count immediately
-            if (currentWahCount > 0) {
-                updateWahUI(currentWahCount, false);
-            }
-
-            window.__mehfil_process_wah_count = function(receivedCount, animate = false, sourceEl = null) {
+            window.__mehfil_process_wah_count = function(receivedCount, animate = false) {
                 if (typeof receivedCount !== 'number' || isNaN(receivedCount)) return;
-                const num = Math.floor(receivedCount);
-                if (num > currentWahCount) {
-                    currentWahCount = num;
-                    try { localStorage.setItem('mehfil_highest_wah_count', currentWahCount.toString()); } catch(e) {}
-                    updateWahUI(currentWahCount, animate, sourceEl);
-                } else if (num < currentWahCount) {
-                    const mgr = window.__mehfil_presence_manager;
-                    if (mgr && mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
-                        try {
-                            mgr.ws.send(JSON.stringify({ type: 'SYNC_WAH', count: currentWahCount }));
-                        } catch (e) {}
-                    }
-                }
+                currentWahCount = Math.floor(receivedCount);
+                updateWahUI(currentWahCount, animate);
             };
 
             // Update presence count UI if websocket already received state before this script ran
@@ -1481,18 +1451,17 @@
                 }
 
                 const now = Date.now();
-                if (now - lastWahClickTimestamp < 150) return;
+                if (now - lastWahClickTimestamp < 200) return;
                 lastWahClickTimestamp = now;
 
-                currentWahCount += 1;
-                try { localStorage.setItem('mehfil_highest_wah_count', currentWahCount.toString()); } catch(e) {}
-                updateWahUI(currentWahCount, true, e ? e.currentTarget : null);
+                // Play local click animation feedback
+                spawnFloatingWah(e ? e.currentTarget : null);
 
                 const mgr = window.__mehfil_presence_manager;
                 if (mgr && mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
                     try {
                         console.info('[MEHFIL WS] Increment Wah sent');
-                        mgr.ws.send(JSON.stringify({ type: 'INCREMENT_WAH', count: currentWahCount }));
+                        mgr.ws.send(JSON.stringify({ type: 'INCREMENT_WAH' }));
                     } catch (err) { console.warn('[MEHFIL WS] Wah send error', err); }
                 } else if (mgr && typeof mgr.connect === 'function') {
                     console.warn('[MEHFIL WS] Wah click while socket not connected');

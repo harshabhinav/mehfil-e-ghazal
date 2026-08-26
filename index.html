@@ -1640,7 +1640,7 @@
                 }
 
                 const now = Date.now();
-                if (now - lastWahClickTimestamp < 250) return;
+                if (now - lastWahClickTimestamp < 80) return;
                 lastWahClickTimestamp = now;
 
                 const mgr = window.__mehfil_presence_manager;

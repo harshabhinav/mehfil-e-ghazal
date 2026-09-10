@@ -319,6 +319,24 @@
                   }
                 } catch(e) {}
               }, 4000);
+
+              // On reconnect, proactively send our known count so the server
+              // can heal itself if it restarted with a lower value.
+              setTimeout(() => {
+                try {
+                  const knownCount = window.__mehfil_latest_wah_count;
+                  if (
+                    typeof knownCount === 'number' &&
+                    !isNaN(knownCount) &&
+                    knownCount > 0 &&
+                    mgr.ws &&
+                    mgr.ws.readyState === WebSocket.OPEN
+                  ) {
+                    mgr.ws.send(JSON.stringify({ type: 'RECONCILE_WAH', count: knownCount }));
+                    console.info('[MEHFIL WS] Sent RECONCILE_WAH on open:', knownCount);
+                  }
+                } catch(e) {}
+              }, 200);
             });
 
             ws.addEventListener('message', (evt) => {
@@ -329,9 +347,28 @@
                     window.__mehfil_update_presence_ui(msg.presenceCount);
                   }
                   if (typeof msg.wahCount === 'number') {
-                    window.__mehfil_latest_wah_count = msg.wahCount;
-                    if (typeof window.__mehfil_process_wah_count === 'function') {
-                      window.__mehfil_process_wah_count(msg.wahCount, false);
+                    // If the server sent a lower count than what we already know,
+                    // send RECONCILE_WAH to heal the server instead of accepting the rollback.
+                    const serverCount = Math.floor(msg.wahCount);
+                    const clientKnown = (typeof window.__mehfil_latest_wah_count === 'number' && !isNaN(window.__mehfil_latest_wah_count))
+                      ? Math.floor(window.__mehfil_latest_wah_count)
+                      : 0;
+                    if (clientKnown > serverCount) {
+                      // Client knows a higher count — tell the server to catch up
+                      console.warn('[MEHFIL WS] Server INIT_STATE count (' + serverCount + ') < client known count (' + clientKnown + '). Sending RECONCILE_WAH.');
+                      try {
+                        if (mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
+                          mgr.ws.send(JSON.stringify({ type: 'RECONCILE_WAH', count: clientKnown }));
+                        }
+                      } catch(e) {}
+                      // Do NOT call __mehfil_process_wah_count with the lower server count;
+                      // the server will broadcast back the correct healed count.
+                    } else {
+                      // Server count is >= what we knew — accept and update
+                      window.__mehfil_latest_wah_count = serverCount;
+                      if (typeof window.__mehfil_process_wah_count === 'function') {
+                        window.__mehfil_process_wah_count(serverCount, false);
+                      }
                     }
                   }
                 } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
@@ -1589,7 +1626,17 @@
 
             function updateWahUI(count, animate = false) {
                 if (count === undefined || count === null || isNaN(count)) return;
-                const formatted = Number(count).toLocaleString();
+                const newCount = Math.floor(count);
+                // Monotonic guard: the displayed count can only ever increase.
+                // This prevents stale WebSocket messages, old server restarts,
+                // or any delayed/out-of-order message from rolling the count back.
+                if (currentWahCount !== null && newCount < currentWahCount) {
+                    console.warn(`[WAH] Guarded against lower Wah count: ${newCount} < ${currentWahCount}`);
+                    return;
+                }
+                currentWahCount = newCount;
+                window.__mehfil_latest_wah_count = currentWahCount;
+                const formatted = Number(currentWahCount).toLocaleString();
                 if (clapCounter) clapCounter.textContent = formatted;
                 if (clapCounterMobile) clapCounterMobile.textContent = formatted;
                 
@@ -1607,6 +1654,12 @@
             }
 
             window.__mehfil_process_wah_count = function(receivedCount, animate = false) {
+                // Delegates fully to updateWahUI which has the monotonic guard built in.
+                updateWahUI(receivedCount, animate);
+            };
+
+            // Internal: same logic kept for legacy callers that check the old guard path.
+            function _legacyProcessWahCount(receivedCount, animate) {
                 if (typeof receivedCount !== 'number' || isNaN(receivedCount)) return;
                 const newCount = Math.floor(receivedCount);
                 if (currentWahCount !== null && newCount < currentWahCount) {

@@ -176,7 +176,7 @@
             transition: none !important;
         }
     </style>
-  <script type="module" crossorigin src="/assets/index-B8XzUgcx.js"></script>
+  <script type="module" crossorigin src="/assets/index-C42Hnxfj.js"></script>
 </head>
 <body class="font-sans relative">
     <script>
@@ -1412,7 +1412,17 @@
 
             function updateWahUI(count, animate = false) {
                 if (count === undefined || count === null || isNaN(count)) return;
-                const formatted = Number(count).toLocaleString();
+                const newCount = Math.floor(count);
+                // Monotonic guard: the displayed count can only ever increase.
+                // This prevents stale WebSocket messages, old server restarts,
+                // or any delayed/out-of-order message from rolling the count back.
+                if (currentWahCount !== null && newCount < currentWahCount) {
+                    console.warn(`[WAH] Guarded against lower Wah count: ${newCount} < ${currentWahCount}`);
+                    return;
+                }
+                currentWahCount = newCount;
+                window.__mehfil_latest_wah_count = currentWahCount;
+                const formatted = Number(currentWahCount).toLocaleString();
                 if (clapCounter) clapCounter.textContent = formatted;
                 if (clapCounterMobile) clapCounterMobile.textContent = formatted;
                 
@@ -1430,6 +1440,12 @@
             }
 
             window.__mehfil_process_wah_count = function(receivedCount, animate = false) {
+                // Delegates fully to updateWahUI which has the monotonic guard built in.
+                updateWahUI(receivedCount, animate);
+            };
+
+            // Internal: same logic kept for legacy callers that check the old guard path.
+            function _legacyProcessWahCount(receivedCount, animate) {
                 if (typeof receivedCount !== 'number' || isNaN(receivedCount)) return;
                 const newCount = Math.floor(receivedCount);
                 if (currentWahCount !== null && newCount < currentWahCount) {

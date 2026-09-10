@@ -1632,6 +1632,77 @@
                 }
             }
 
+            // 4a. Local Wah Sound Effect System (plays only on local device button click)
+            const WAH_AUDIO_SRC = './assets/audio/WhatsApp Audio 2026-09-10 at 2.22.06 PM.mp4';
+            let wahAudioBuffer = null;
+            let wahAudioCtx = null;
+
+            // HTML5 Audio template pre-loader
+            const wahAudioPreload = new Audio(WAH_AUDIO_SRC);
+            wahAudioPreload.preload = 'auto';
+
+            function getWahAudioContext() {
+                if (!wahAudioCtx) {
+                    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContextClass) {
+                        wahAudioCtx = new AudioContextClass();
+                    }
+                }
+                if (wahAudioCtx && wahAudioCtx.state === 'suspended') {
+                    wahAudioCtx.resume().catch(() => {});
+                }
+                return wahAudioCtx;
+            }
+
+            // Pre-fetch and decode AudioBuffer for 0ms low-latency Web Audio API playback
+            try {
+                fetch(encodeURI(WAH_AUDIO_SRC))
+                    .then(res => res.arrayBuffer())
+                    .then(buf => {
+                        const ctx = getWahAudioContext();
+                        if (ctx) {
+                            return ctx.decodeAudioData(buf);
+                        }
+                    })
+                    .then(decoded => {
+                        if (decoded) wahAudioBuffer = decoded;
+                    })
+                    .catch(err => {
+                        console.warn('[WAH SOUND] Web Audio preload notice:', err);
+                    });
+            } catch(e) {}
+
+            function playLocalWahSound() {
+                // 1. Web Audio API (Instant 0ms playback with smooth unlimited overlapping)
+                try {
+                    const ctx = getWahAudioContext();
+                    if (ctx && wahAudioBuffer) {
+                        const source = ctx.createBufferSource();
+                        source.buffer = wahAudioBuffer;
+                        source.connect(ctx.destination);
+                        source.start(0);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('[WAH SOUND] Web Audio play notice:', e);
+                }
+
+                // 2. Fallback: HTML5 Audio instance cloning
+                try {
+                    const sound = wahAudioPreload.cloneNode(true);
+                    sound.volume = 1.0;
+                    const playPromise = sound.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(err => {
+                            console.warn('[WAH SOUND] HTML5 Audio play error:', err);
+                        });
+                    }
+                } catch (e) {
+                    console.warn('[WAH SOUND] HTML5 Audio play exception:', e);
+                }
+            }
+
+            let lastWahSoundTimestamp = 0;
             let lastWahClickTimestamp = 0;
             function handleWahClick(e) {
                 if (e) {
@@ -1640,7 +1711,14 @@
                 }
 
                 const now = Date.now();
-                if (now - lastWahClickTimestamp < 200) return;
+
+                // Play local Wah sound effect immediately on every physical click on this device
+                if (now - lastWahSoundTimestamp >= 50) {
+                    lastWahSoundTimestamp = now;
+                    playLocalWahSound();
+                }
+
+                if (now - lastWahClickTimestamp < 150) return;
                 lastWahClickTimestamp = now;
 
                 const mgr = window.__mehfil_presence_manager;

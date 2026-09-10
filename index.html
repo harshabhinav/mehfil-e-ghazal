@@ -204,19 +204,19 @@
             const isMobile = window.innerWidth < 768;
             const savedTheme = localStorage.getItem('mehfil_theme_mode') || 'auto';
             if (savedTheme === 'day') {
-                initialSrc = isMobile ? './assets/backgrounds/Day p.jpeg' : './assets/backgrounds/Day2.jpeg';
+                initialSrc = isMobile ? './assets/backgrounds/background-day-mobile.jpeg' : './assets/backgrounds/background-day-desktop.jpeg';
             } else if (savedTheme === 'evening') {
-                initialSrc = isMobile ? './assets/backgrounds/Evening p.jpeg' : './assets/backgrounds/Evening (2).jpeg';
+                initialSrc = isMobile ? './assets/backgrounds/background-evening-mobile.jpeg' : './assets/backgrounds/background-evening-desktop.jpeg';
             } else if (savedTheme === 'night') {
-                initialSrc = isMobile ? './assets/backgrounds/Night newp9.jpeg' : './assets/backgrounds/Night.jpeg';
+                initialSrc = isMobile ? './assets/backgrounds/background-night-mobile.jpeg' : './assets/backgrounds/background-night-desktop.jpeg';
             } else {
                 const h = new Date().getHours();
                 if (h >= 6 && h < 18) {
-                    initialSrc = isMobile ? './assets/backgrounds/Day p.jpeg' : './assets/backgrounds/Day2.jpeg';
+                    initialSrc = isMobile ? './assets/backgrounds/background-day-mobile.jpeg' : './assets/backgrounds/background-day-desktop.jpeg';
                 } else if (h >= 18 && h < 20) {
-                    initialSrc = isMobile ? './assets/backgrounds/Evening p.jpeg' : './assets/backgrounds/Evening (2).jpeg';
+                    initialSrc = isMobile ? './assets/backgrounds/background-evening-mobile.jpeg' : './assets/backgrounds/background-evening-desktop.jpeg';
                 } else {
-                    initialSrc = isMobile ? './assets/backgrounds/Night newp9.jpeg' : './assets/backgrounds/Night.jpeg';
+                    initialSrc = isMobile ? './assets/backgrounds/background-night-mobile.jpeg' : './assets/backgrounds/background-night-desktop.jpeg';
                 }
             }
             const baseLayer = document.getElementById('bg-layer-base');
@@ -471,7 +471,7 @@
                 <span class="hidden sm:inline">Spotify</span>
             </a>
             <a id="yt-link" href="https://music.youtube.com" target="_blank" rel="noopener noreferrer" title="Search on YouTube Music" class="glass-pill px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-full flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/15 transition-all border border-white/10 shadow-sm">
-                <img src="./assets/icons/YTMicon.jpeg" alt="YT Music" class="w-3.5 h-3.5 sm:w-4 sm:h-4 object-contain rounded-full" />
+                <img src="./assets/icons/ytm-icon.jpeg" alt="YT Music" class="w-3.5 h-3.5 sm:w-4 sm:h-4 object-contain rounded-full" />
                 <span class="hidden sm:inline">YT Music</span>
             </a>
         </div>
@@ -545,7 +545,7 @@
                     <!-- Volume Controls -->
                     <div class="relative flex items-center justify-center border-l border-white/15 pl-2.5 md:pl-4 ml-0.5 md:ml-1 md:gap-2.5 w-[50px] md:w-auto">
                         <button id="mute-btn" class="w-9 h-9 md:w-auto md:h-auto rounded-full bg-white md:bg-transparent text-black md:text-white/70 flex items-center justify-center shadow-md md:shadow-none text-base md:text-2xl transition active:scale-95 touch-none" title="Volume Controls">
-                            <img src="./assets/icons/phone volume icon.jpeg" alt="Volume" class="w-5 h-5 object-contain rounded-full md:hidden" />
+                            <img src="./assets/icons/volume-icon.jpeg" alt="Volume" class="w-5 h-5 object-contain rounded-full md:hidden" />
                             <span class="hidden md:inline">🔊</span>
                         </button>
                         <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1" class="w-24 lg:w-28 h-2 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white hidden md:block" title="Volume" />
@@ -582,15 +582,15 @@
         // 🌄 MEHFIL THEME IMAGES CONFIGURATION (DESKTOP & MOBILE)
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const DESKTOP_THEME_IMAGES = {
-            day: "./assets/backgrounds/Day2.jpeg",
-            evening: "./assets/backgrounds/Evening (2).jpeg",
-            night: "./assets/backgrounds/Night.jpeg"
+            day: "./assets/backgrounds/background-day-desktop.jpeg",
+            evening: "./assets/backgrounds/background-evening-desktop.jpeg",
+            night: "./assets/backgrounds/background-night-desktop.jpeg"
         };
 
         const MOBILE_THEME_IMAGES = {
-            day: "./assets/backgrounds/Day p.jpeg",
-            evening: "./assets/backgrounds/Evening p.jpeg",
-            night: "./assets/backgrounds/Night newp9.jpeg"
+            day: "./assets/backgrounds/background-day-mobile.jpeg",
+            evening: "./assets/backgrounds/background-evening-mobile.jpeg",
+            night: "./assets/backgrounds/background-night-mobile.jpeg"
         };
 
         // Theme State Management
@@ -1085,12 +1085,7 @@
                 src: "./assets/audio/chamakte-chand-ko.mp3",
                 cover: "./assets/covers/chamakte-chand-ko.jpg"
             },
-            {
-                title: "Unko Bhi Humse",
-                artist: "Sadhana Sargam",
-                src: "./assets/audio/WhatsApp Audio 2026-08-21 at 12.48.56 PM.mpeg",
-                cover: "./assets/covers/61.jpg"
-            }
+
         ];
 
         // Media Session API Integration (OS-Level Media Controls)
@@ -1108,7 +1103,7 @@
             const track = playlist[currentTrackIndex];
             if (!track) return;
             try {
-                const coverUrl = track.cover ? new URL(track.cover, window.location.href).href : new URL('./assets/icons/images.jpg', window.location.href).href;
+                const coverUrl = track.cover ? new URL(track.cover, window.location.href).href : new URL('./assets/icons/mehfil-media-artwork.jpg', window.location.href).href;
                 
                 let mimeType = 'image/jpeg';
                 if (coverUrl.endsWith('.png')) mimeType = 'image/png';
@@ -1686,7 +1681,7 @@
             }
 
             // 4a. Local Wah Sound Effect System (plays only on local device button click)
-            const WAH_AUDIO_SRC = './assets/audio/WhatsApp Audio 2026-09-10 at 2.22.06 PM.mp4';
+            const WAH_AUDIO_SRC = './assets/audio/wah-sound.mp4';
             let wahAudioBuffer = null;
             let wahAudioCtx = null;
 

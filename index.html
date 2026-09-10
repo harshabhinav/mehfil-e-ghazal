@@ -328,13 +328,19 @@
                   if (typeof msg.presenceCount === 'number') {
                     window.__mehfil_update_presence_ui(msg.presenceCount);
                   }
-                  if (typeof msg.wahCount === 'number' && typeof window.__mehfil_process_wah_count === 'function') {
-                    window.__mehfil_process_wah_count(msg.wahCount, false);
+                  if (typeof msg.wahCount === 'number') {
+                    window.__mehfil_latest_wah_count = msg.wahCount;
+                    if (typeof window.__mehfil_process_wah_count === 'function') {
+                      window.__mehfil_process_wah_count(msg.wahCount, false);
+                    }
                   }
                 } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
                   window.__mehfil_update_presence_ui(msg.count);
-                } else if (msg.type === 'WAH_COUNT' && typeof msg.count === 'number' && typeof window.__mehfil_process_wah_count === 'function') {
-                  window.__mehfil_process_wah_count(msg.count, true);
+                } else if (msg.type === 'WAH_COUNT' && typeof msg.count === 'number') {
+                  window.__mehfil_latest_wah_count = msg.count;
+                  if (typeof window.__mehfil_process_wah_count === 'function') {
+                    window.__mehfil_process_wah_count(msg.count, true);
+                  }
                 }
               } catch (e) {
                 console.warn('[MEHFIL WS] Message parse error', e);
@@ -1596,14 +1602,21 @@
                         wahBtnMobile.classList.add('wah-button-active');
                         setTimeout(() => wahBtnMobile.classList.remove('wah-button-active'), 150);
                     }
+                    spawnFloatingWah();
                 }
             }
 
             window.__mehfil_process_wah_count = function(receivedCount, animate = false) {
                 if (typeof receivedCount !== 'number' || isNaN(receivedCount)) return;
                 currentWahCount = Math.floor(receivedCount);
+                window.__mehfil_latest_wah_count = currentWahCount;
                 updateWahUI(currentWahCount, animate);
             };
+
+            // Process cached Wah count if websocket already received state before this script ran
+            if (window.__mehfil_latest_wah_count !== undefined && window.__mehfil_latest_wah_count !== null) {
+                window.__mehfil_process_wah_count(window.__mehfil_latest_wah_count, false);
+            }
 
             // Update presence count UI if websocket already received state before this script ran
             const mgr = window.__mehfil_presence_manager;
@@ -1624,9 +1637,6 @@
                 const now = Date.now();
                 if (now - lastWahClickTimestamp < 200) return;
                 lastWahClickTimestamp = now;
-
-                // Play local click animation feedback
-                spawnFloatingWah(e ? e.currentTarget : null);
 
                 const mgr = window.__mehfil_presence_manager;
                 if (mgr && mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {

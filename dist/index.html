@@ -1431,7 +1431,12 @@
 
             window.__mehfil_process_wah_count = function(receivedCount, animate = false) {
                 if (typeof receivedCount !== 'number' || isNaN(receivedCount)) return;
-                currentWahCount = Math.floor(receivedCount);
+                const newCount = Math.floor(receivedCount);
+                if (currentWahCount !== null && newCount < currentWahCount) {
+                    console.warn(`[WAH] Guarded against lower Wah count: ${newCount} < ${currentWahCount}`);
+                    return;
+                }
+                currentWahCount = newCount;
                 window.__mehfil_latest_wah_count = currentWahCount;
                 updateWahUI(currentWahCount, animate);
             };

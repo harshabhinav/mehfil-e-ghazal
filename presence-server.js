@@ -20,8 +20,12 @@ try {
 
 function saveWahCount() {
     try {
-        fs.writeFileSync(WAH_FILE, JSON.stringify({ count: globalWahCount }));
-    } catch (e) {}
+        const tmpFile = WAH_FILE + '.tmp';
+        fs.writeFileSync(tmpFile, JSON.stringify({ count: globalWahCount }));
+        fs.renameSync(tmpFile, WAH_FILE);
+    } catch (e) {
+        console.warn("Could not save wah_count.json:", e);
+    }
 }
 
 // HTTP Health Check Endpoint

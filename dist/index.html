@@ -176,7 +176,7 @@
             transition: none !important;
         }
     </style>
-  <script type="module" crossorigin src="/assets/index-B8XzUgcx.js"></script>
+  <script type="module" crossorigin src="/assets/index-C_VlBXp9.js"></script>
 </head>
 <body class="font-sans relative">
     <script>
@@ -1425,26 +1425,14 @@
                         wahBtnMobile.classList.add('wah-button-active');
                         setTimeout(() => wahBtnMobile.classList.remove('wah-button-active'), 150);
                     }
-                    spawnFloatingWah();
                 }
             }
 
             window.__mehfil_process_wah_count = function(receivedCount, animate = false) {
                 if (typeof receivedCount !== 'number' || isNaN(receivedCount)) return;
-                const newCount = Math.floor(receivedCount);
-                if (currentWahCount !== null && newCount < currentWahCount) {
-                    console.warn(`[WAH] Guarded against lower Wah count: ${newCount} < ${currentWahCount}`);
-                    return;
-                }
-                currentWahCount = newCount;
-                window.__mehfil_latest_wah_count = currentWahCount;
+                currentWahCount = Math.floor(receivedCount);
                 updateWahUI(currentWahCount, animate);
             };
-
-            // Process cached Wah count if WebSocket received INIT_STATE or WAH_COUNT before this script ran
-            if (window.__mehfil_latest_wah_count !== undefined && window.__mehfil_latest_wah_count !== null) {
-                window.__mehfil_process_wah_count(window.__mehfil_latest_wah_count, false);
-            }
 
             // Update presence count UI if websocket already received state before this script ran
             const mgr = window.__mehfil_presence_manager;
@@ -1463,8 +1451,11 @@
                 }
 
                 const now = Date.now();
-                if (now - lastWahClickTimestamp < 250) return;
+                if (now - lastWahClickTimestamp < 200) return;
                 lastWahClickTimestamp = now;
+
+                // Play local click animation feedback
+                spawnFloatingWah(e ? e.currentTarget : null);
 
                 const mgr = window.__mehfil_presence_manager;
                 if (mgr && mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {

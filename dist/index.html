@@ -176,6 +176,7 @@
             transition: none !important;
         }
     </style>
+  <script type="module" crossorigin src="/assets/index-B8XzUgcx.js"></script>
 </head>
 <body class="font-sans relative">
     <script>
@@ -224,233 +225,7 @@
             if (baseLayer) baseLayer.src = initialSrc;
             if (overlayLayer) overlayLayer.src = initialSrc;
         })();
-    </script>
-    <script>
-      // 🚀 EARLY WEBSOCKET PRESENCE ENGINE
-      // Connects immediately during HTML parsing without waiting for DOMContentLoaded, audio loading, images, or main script parsing.
-      (function initMehfilPresenceEarly() {
-        if (window.__mehfil_presence_initialized) return;
-        window.__mehfil_presence_initialized = true;
-
-        let latestOnlineCount = null;
-
-        function getSessionId() {
-          let sid = window.__mehfil_session_id || (function() {
-            try { return sessionStorage.getItem('mehfil_session_id'); } catch(e) { return null; }
-          })();
-          if (!sid) {
-            sid = 'sess_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
-            try { sessionStorage.setItem('mehfil_session_id', sid); } catch(e) {}
-            window.__mehfil_session_id = sid;
-          }
-          return sid;
-        }
-
-        window.__mehfil_update_presence_ui = function(count) {
-          if (count === undefined || count === null) return;
-          latestOnlineCount = count;
-          const el = document.getElementById('online-count');
-          if (el) {
-            el.textContent = `${count} Online`;
-          }
-        };
-
-        function getWsEndpoint() {
-          const sid = getSessionId();
-          const param = `sessionId=${encodeURIComponent(sid)}`;
-
-          let customUrl = null;
-          try {
-            if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_MEHFIL_WS_URL) {
-              customUrl = import.meta.env.VITE_MEHFIL_WS_URL;
-            }
-          } catch(e) {}
-          if (!customUrl && window.MEHFIL_WS_URL && typeof window.MEHFIL_WS_URL === 'string' && window.MEHFIL_WS_URL.length) {
-            customUrl = window.MEHFIL_WS_URL;
-          }
-
-          if (customUrl && typeof customUrl === 'string' && customUrl.length) {
-            const sep = customUrl.includes('?') ? '&' : '?';
-            return `${customUrl}${sep}${param}`;
-          }
-
-          const host = window.location.hostname || 'localhost';
-          const isLocal = (host === 'localhost' || host === '127.0.0.1' || host === '');
-          const base = isLocal
-            ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${host}:3001`
-            : 'wss://mehfil-e-ghazal.onrender.com';
-          return `${base}?${param}`;
-        }
-
-        // ── Client-side localStorage high-watermark ──────────────────────────
-        // Read the highest Wah count this browser has ever seen so we can
-        // (a) display it immediately on page load, and
-        // (b) send RECONCILE_WAH if the server restarts with a stale count.
-        const LOCAL_STORAGE_WAH_KEY = 'mehfil_highest_wah_count';
-        const HARD_FLOOR_CLIENT = 1596; // must match server HARD_FLOOR
-
-        function getLocalHighWah() {
-          try {
-            const raw = localStorage.getItem(LOCAL_STORAGE_WAH_KEY);
-            const v = parseInt(raw, 10);
-            return (!isNaN(v) && v > 0) ? Math.max(v, HARD_FLOOR_CLIENT) : HARD_FLOOR_CLIENT;
-          } catch (e) { return HARD_FLOOR_CLIENT; }
-        }
-
-        function setLocalHighWah(count) {
-          try {
-            const current = getLocalHighWah();
-            if (count > current) {
-              localStorage.setItem(LOCAL_STORAGE_WAH_KEY, count.toString());
-            }
-          } catch (e) {}
-        }
-
-        // Pre-seed window.__mehfil_latest_wah_count from localStorage immediately
-        // so if the WS fires INIT_STATE before our lower script block runs,
-        // the UI and the guard both have the right floor.
-        {
-          const localHigh = getLocalHighWah();
-          if (!window.__mehfil_latest_wah_count || window.__mehfil_latest_wah_count < localHigh) {
-            window.__mehfil_latest_wah_count = localHigh;
-          }
-        }
-
-        const mgr = {
-          ws: null,
-          connecting: false,
-          shouldReconnect: true,
-          reconnectTimer: null,
-          pingTimer: null,
-          backoffMs: 1000,
-          getOnlineCount: () => latestOnlineCount
-        };
-        window.__mehfil_presence_manager = mgr;
-
-        function connect() {
-          if (!mgr.shouldReconnect) return;
-          if (mgr.ws && (mgr.ws.readyState === WebSocket.OPEN || mgr.ws.readyState === WebSocket.CONNECTING)) return;
-          if (mgr.connecting) return;
-          mgr.connecting = true;
-
-          const wsUrl = getWsEndpoint();
-          console.info('[MEHFIL WS] Connecting to:', wsUrl);
-
-          try {
-            const ws = new WebSocket(wsUrl);
-            mgr.ws = ws;
-
-            ws.addEventListener('open', () => {
-              console.info('[MEHFIL WS] Connected');
-              mgr.connecting = false;
-              mgr.backoffMs = 1000;
-
-              if (mgr.pingTimer) clearInterval(mgr.pingTimer);
-              mgr.pingTimer = setInterval(() => {
-                try {
-                  if (mgr.ws && mgr.ws.readyState === WebSocket.OPEN) {
-                    mgr.ws.send(JSON.stringify({ type: 'PING' }));
-                  }
-                } catch(e) {}
-              }, 4000);
-
-              // ── Reconcile: if we have seen a higher count than server knows ──
-              // This heals the server after a Render restart that wiped its memory.
-              const localHigh = getLocalHighWah();
-              if (localHigh > 0) {
-                try {
-                  ws.send(JSON.stringify({ type: 'RECONCILE_WAH', count: localHigh }));
-                  console.info('[MEHFIL WS] Sent RECONCILE_WAH with local high:', localHigh);
-                } catch (e) {}
-              }
-            });
-
-            ws.addEventListener('message', (evt) => {
-              try {
-                const msg = JSON.parse(evt.data);
-                if (msg.type === 'INIT_STATE') {
-                  if (typeof msg.presenceCount === 'number') {
-                    window.__mehfil_update_presence_ui(msg.presenceCount);
-                  }
-                  if (typeof msg.wahCount === 'number') {
-                    // Only accept if >= our known local high
-                    const serverCount = msg.wahCount;
-                    const localHigh = getLocalHighWah();
-                    const effective = Math.max(serverCount, localHigh);
-                    window.__mehfil_latest_wah_count = effective;
-                    if (typeof window.__mehfil_process_wah_count === 'function') {
-                      window.__mehfil_process_wah_count(effective, false);
-                    }
-                  }
-                } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
-                  window.__mehfil_update_presence_ui(msg.count);
-                } else if (msg.type === 'WAH_COUNT' && typeof msg.count === 'number') {
-                  window.__mehfil_latest_wah_count = msg.count;
-                  if (typeof window.__mehfil_process_wah_count === 'function') {
-                    window.__mehfil_process_wah_count(msg.count, true);
-                  }
-                }
-              } catch (e) {
-                console.warn('[MEHFIL WS] Message parse error', e);
-              }
-            });
-
-            ws.addEventListener('close', () => {
-              console.info('[MEHFIL WS] Connection closed');
-              mgr.connecting = false;
-              if (mgr.pingTimer) { clearInterval(mgr.pingTimer); mgr.pingTimer = null; }
-              mgr.ws = null;
-
-              if (mgr.shouldReconnect) {
-                if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
-                mgr.reconnectTimer = setTimeout(() => {
-                  mgr.backoffMs = Math.min(15000, mgr.backoffMs * 1.5);
-                  connect();
-                }, mgr.backoffMs);
-              }
-            });
-
-            ws.addEventListener('error', (err) => {
-              console.warn('[MEHFIL WS] Error', err && err.message);
-              try { if (mgr.ws) mgr.ws.close(); } catch(e) {}
-            });
-
-          } catch (e) {
-            console.warn('[MEHFIL WS] Connect exception', e && e.message);
-            mgr.connecting = false;
-            if (mgr.shouldReconnect) {
-              if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
-              mgr.reconnectTimer = setTimeout(() => {
-                mgr.backoffMs = Math.min(15000, mgr.backoffMs * 1.5);
-                connect();
-              }, mgr.backoffMs);
-            }
-          }
-        }
-
-        mgr.connect = connect;
-        connect();
-
-        document.addEventListener('visibilitychange', () => {
-          if (document.visibilityState === 'visible') connect();
-        });
-        window.addEventListener('online', connect);
-
-        const handleUnload = () => {
-          mgr.shouldReconnect = false;
-          if (mgr.pingTimer) clearInterval(mgr.pingTimer);
-          if (mgr.reconnectTimer) clearTimeout(mgr.reconnectTimer);
-          try {
-            if (mgr.ws && (mgr.ws.readyState === WebSocket.OPEN || mgr.ws.readyState === WebSocket.CONNECTING)) {
-              mgr.ws.close(1000, "Page unload");
-            }
-          } catch (e) {}
-        };
-
-        window.addEventListener('beforeunload', handleUnload);
-        window.addEventListener('pagehide', handleUnload);
-      })();
-    </script>
+    </script>
 
     <!-- 2. Top Navigation Bar -->
     <nav class="fixed top-0 left-0 w-full px-3 py-2.5 sm:px-6 sm:py-4 flex flex-wrap md:flex-nowrap justify-between items-center gap-2 z-20 pt-[max(10px,env(safe-area-inset-top))]">
@@ -1618,26 +1393,7 @@
             const wahBtn = document.getElementById('wah-btn');
             const wahBtnMobile = document.getElementById('wah-btn-mobile');
 
-            // ── Initialize currentWahCount from localStorage high-watermark ──
-            // This ensures the UI never shows a number lower than what this
-            // browser has already seen, even across page refreshes.
-            let currentWahCount = (function() {
-              try {
-                const raw = localStorage.getItem('mehfil_highest_wah_count');
-                const v = parseInt(raw, 10);
-                const floor = 1596;
-                if (!isNaN(v) && v >= floor) return v;
-                return null; // Let INIT_STATE from server seed it (server has floor baked in)
-              } catch (e) { return null; }
-            })();
-
-            // Immediately render any locally-known count so the user never sees '--' on reload
-            if (currentWahCount !== null) {
-              const clapCounter = document.getElementById('clap-counter');
-              const clapCounterMobile = document.getElementById('clap-counter-mobile');
-              if (clapCounter) clapCounter.textContent = Number(currentWahCount).toLocaleString();
-              if (clapCounterMobile) clapCounterMobile.textContent = Number(currentWahCount).toLocaleString();
-            }
+            let currentWahCount = null;
 
             function spawnFloatingWah(containerEl) {
                 const target = containerEl || (window.innerWidth < 768 ? wahBtnMobile : wahBtn);
@@ -1676,20 +1432,12 @@
             window.__mehfil_process_wah_count = function(receivedCount, animate = false) {
                 if (typeof receivedCount !== 'number' || isNaN(receivedCount)) return;
                 const newCount = Math.floor(receivedCount);
-                // Strict monotonic guard: never allow the UI to go backward
                 if (currentWahCount !== null && newCount < currentWahCount) {
                     console.warn(`[WAH] Guarded against lower Wah count: ${newCount} < ${currentWahCount}`);
                     return;
                 }
                 currentWahCount = newCount;
                 window.__mehfil_latest_wah_count = currentWahCount;
-                // Persist high-watermark to localStorage so refreshes never see a lower number
-                try {
-                    const prev = parseInt(localStorage.getItem('mehfil_highest_wah_count') || '0', 10);
-                    if (currentWahCount > prev) {
-                        localStorage.setItem('mehfil_highest_wah_count', currentWahCount.toString());
-                    }
-                } catch (e) {}
                 updateWahUI(currentWahCount, animate);
             };
 

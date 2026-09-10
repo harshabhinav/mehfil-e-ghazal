@@ -225,7 +225,7 @@
             if (overlayLayer) overlayLayer.src = initialSrc;
         })();
     </script>
-    <script type="module">
+    <script>
       // 🚀 EARLY WEBSOCKET PRESENCE ENGINE
       // Connects immediately during HTML parsing without waiting for DOMContentLoaded, audio loading, images, or main script parsing.
       (function initMehfilPresenceEarly() {
@@ -282,6 +282,40 @@
           return `${base}?${param}`;
         }
 
+        // ── Client-side localStorage high-watermark ──────────────────────────
+        // Read the highest Wah count this browser has ever seen so we can
+        // (a) display it immediately on page load, and
+        // (b) send RECONCILE_WAH if the server restarts with a stale count.
+        const LOCAL_STORAGE_WAH_KEY = 'mehfil_highest_wah_count';
+        const HARD_FLOOR_CLIENT = 1596; // must match server HARD_FLOOR
+
+        function getLocalHighWah() {
+          try {
+            const raw = localStorage.getItem(LOCAL_STORAGE_WAH_KEY);
+            const v = parseInt(raw, 10);
+            return (!isNaN(v) && v > 0) ? Math.max(v, HARD_FLOOR_CLIENT) : HARD_FLOOR_CLIENT;
+          } catch (e) { return HARD_FLOOR_CLIENT; }
+        }
+
+        function setLocalHighWah(count) {
+          try {
+            const current = getLocalHighWah();
+            if (count > current) {
+              localStorage.setItem(LOCAL_STORAGE_WAH_KEY, count.toString());
+            }
+          } catch (e) {}
+        }
+
+        // Pre-seed window.__mehfil_latest_wah_count from localStorage immediately
+        // so if the WS fires INIT_STATE before our lower script block runs,
+        // the UI and the guard both have the right floor.
+        {
+          const localHigh = getLocalHighWah();
+          if (!window.__mehfil_latest_wah_count || window.__mehfil_latest_wah_count < localHigh) {
+            window.__mehfil_latest_wah_count = localHigh;
+          }
+        }
+
         const mgr = {
           ws: null,
           connecting: false,
@@ -319,6 +353,16 @@
                   }
                 } catch(e) {}
               }, 4000);
+
+              // ── Reconcile: if we have seen a higher count than server knows ──
+              // This heals the server after a Render restart that wiped its memory.
+              const localHigh = getLocalHighWah();
+              if (localHigh > 0) {
+                try {
+                  ws.send(JSON.stringify({ type: 'RECONCILE_WAH', count: localHigh }));
+                  console.info('[MEHFIL WS] Sent RECONCILE_WAH with local high:', localHigh);
+                } catch (e) {}
+              }
             });
 
             ws.addEventListener('message', (evt) => {
@@ -329,9 +373,13 @@
                     window.__mehfil_update_presence_ui(msg.presenceCount);
                   }
                   if (typeof msg.wahCount === 'number') {
-                    window.__mehfil_latest_wah_count = msg.wahCount;
+                    // Only accept if >= our known local high
+                    const serverCount = msg.wahCount;
+                    const localHigh = getLocalHighWah();
+                    const effective = Math.max(serverCount, localHigh);
+                    window.__mehfil_latest_wah_count = effective;
                     if (typeof window.__mehfil_process_wah_count === 'function') {
-                      window.__mehfil_process_wah_count(msg.wahCount, false);
+                      window.__mehfil_process_wah_count(effective, false);
                     }
                   }
                 } else if (msg.type === 'PRESENCE_COUNT' && typeof msg.count === 'number') {
@@ -1570,7 +1618,26 @@
             const wahBtn = document.getElementById('wah-btn');
             const wahBtnMobile = document.getElementById('wah-btn-mobile');
 
-            let currentWahCount = null;
+            // ── Initialize currentWahCount from localStorage high-watermark ──
+            // This ensures the UI never shows a number lower than what this
+            // browser has already seen, even across page refreshes.
+            let currentWahCount = (function() {
+              try {
+                const raw = localStorage.getItem('mehfil_highest_wah_count');
+                const v = parseInt(raw, 10);
+                const floor = 1596;
+                if (!isNaN(v) && v >= floor) return v;
+                return null; // Let INIT_STATE from server seed it (server has floor baked in)
+              } catch (e) { return null; }
+            })();
+
+            // Immediately render any locally-known count so the user never sees '--' on reload
+            if (currentWahCount !== null) {
+              const clapCounter = document.getElementById('clap-counter');
+              const clapCounterMobile = document.getElementById('clap-counter-mobile');
+              if (clapCounter) clapCounter.textContent = Number(currentWahCount).toLocaleString();
+              if (clapCounterMobile) clapCounterMobile.textContent = Number(currentWahCount).toLocaleString();
+            }
 
             function spawnFloatingWah(containerEl) {
                 const target = containerEl || (window.innerWidth < 768 ? wahBtnMobile : wahBtn);
@@ -1609,12 +1676,20 @@
             window.__mehfil_process_wah_count = function(receivedCount, animate = false) {
                 if (typeof receivedCount !== 'number' || isNaN(receivedCount)) return;
                 const newCount = Math.floor(receivedCount);
+                // Strict monotonic guard: never allow the UI to go backward
                 if (currentWahCount !== null && newCount < currentWahCount) {
                     console.warn(`[WAH] Guarded against lower Wah count: ${newCount} < ${currentWahCount}`);
                     return;
                 }
                 currentWahCount = newCount;
                 window.__mehfil_latest_wah_count = currentWahCount;
+                // Persist high-watermark to localStorage so refreshes never see a lower number
+                try {
+                    const prev = parseInt(localStorage.getItem('mehfil_highest_wah_count') || '0', 10);
+                    if (currentWahCount > prev) {
+                        localStorage.setItem('mehfil_highest_wah_count', currentWahCount.toString());
+                    }
+                } catch (e) {}
                 updateWahUI(currentWahCount, animate);
             };
 
